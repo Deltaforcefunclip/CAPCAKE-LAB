@@ -223,6 +223,17 @@ class TimelineEngineTest {
         assertEquals(1.25f, restored.clips.first { it.id == "music" }.speed, 0.0001f)
     }
 
+    @Test fun audioCodecBoundsCorruptLaneIndexToClipCount() {
+        val manager = AudioClipManager()
+        val corrupt = """{"clips":[{"id":"a","startTimeMs":0,"durationMs":500,"filePath":"/a.wav","laneIndex":2147483647}]}"""
+
+        TimelineStateCodec.restoreAudio(corrupt, manager)
+
+        assertEquals(1, manager.clips.size)
+        assertEquals(1, manager.lanes.size)
+        assertEquals("a", manager.lanes.single().clips.single().id)
+    }
+
     @Test fun audioCodecRestoresMissingLaneMetadataWithoutDroppingClips() {
         val manager = AudioClipManager()
         val legacy = """{"clips":[{"id":"a","startTimeMs":0,"durationMs":500,"filePath":"/a.wav"},{"id":"b","startTimeMs":100,"durationMs":200,"filePath":"/b.wav"}]}"""
