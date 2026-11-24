@@ -87,7 +87,7 @@ class TimelineEngineTest {
         val twice = AddKeyframeCommand("a", replacement).apply(once)
         assertEquals(1, twice.clip("a")!!.keyframes.size)
         assertEquals("k2", twice.clip("a")!!.keyframes.single().id)
-        assertEquals(0.8f, twice.clip("a")!!.keyframes.single().value)
+        assertEquals(0.8f, twice.clip("a")!!.keyframes.single().value, 0.0001f)
     }
 
     @Test fun virtualizerReturnsOnlyIntersectingClipsInTrackOrder() {
@@ -122,8 +122,8 @@ class TimelineEngineTest {
         TimelineStateCodec.restoreVideo(legacy, manager)
         assertEquals(1, manager.clips.size)
         assertEquals(700L, manager.clips.single().sourceDurationMs)
-        assertEquals(1f, manager.clips.single().speed)
-        assertEquals(1f, manager.clips.single().opacity)
+        assertEquals(1f, manager.clips.single().speed, 0.0001f)
+        assertEquals(1f, manager.clips.single().opacity, 0.0001f)
     }
 
     @Test fun corruptAudioProjectDoesNotClearExistingTimeline() {
