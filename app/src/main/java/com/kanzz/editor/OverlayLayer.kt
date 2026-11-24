@@ -140,14 +140,29 @@ class OverlayClipManager {
 
     fun trim(id: String, newStartTimeMs: Long, newDurationMs: Long): Boolean {
         val clip = find(id) ?: return false
-        if (newStartTimeMs < 0L || newDurationMs < 1L) return false
+        if (newStartTimeMs < clip.startTimeMs || newDurationMs < 1L) return false
         val oldStart = clip.startTimeMs
         val oldDuration = clip.durationMs
+        val oldSourceStart = clip.sourceStartMs
+        val oldSourceDuration = clip.sourceDurationMs
+        val oldEnd = oldStart + oldDuration
+        val newEnd = newStartTimeMs + newDurationMs
+        if (newEnd > oldEnd) return false
+
+        if (clip.mediaType == OverlayClip.Type.VIDEO) {
+            val sourcePerTimelineMs = oldSourceDuration.toDouble() / oldDuration.coerceAtLeast(1L)
+            val sourceTrimStart = ((newStartTimeMs - oldStart) * sourcePerTimelineMs).toLong()
+            val sourceTrimEnd = ((oldEnd - newEnd) * sourcePerTimelineMs).toLong()
+            clip.sourceStartMs = oldSourceStart + sourceTrimStart
+            clip.sourceDurationMs = (oldSourceDuration - sourceTrimStart - sourceTrimEnd).coerceAtLeast(1L)
+        }
         clip.startTimeMs = newStartTimeMs
         clip.durationMs = newDurationMs
         if (!canMoveToLane(clip, clip.trackIndex)) {
             clip.startTimeMs = oldStart
             clip.durationMs = oldDuration
+            clip.sourceStartMs = oldSourceStart
+            clip.sourceDurationMs = oldSourceDuration
             return false
         }
         sort()
