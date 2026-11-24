@@ -7829,12 +7829,6 @@ class MainActivity : AppCompatActivity() {
         super.onPause()
     }
 
-    override fun onDestroy() {
-        clearOverlayVideoPreviewPlayers()
-        overlayPreviewExecutor.shutdown()
-        super.onDestroy()
-    }
-
     // =====================================
     // TIME
     // =====================================
@@ -8844,7 +8838,7 @@ class MainActivity : AppCompatActivity() {
             val frameWidth = playerView.width.coerceAtLeast(1).toFloat()
             val frameHeight = playerView.height.coerceAtLeast(1).toFloat()
             val compositorSettings = object : VideoCompositorSettings {
-                override fun getOutputSize(inputSizes: MutableList<Size>): Size =
+                override fun getOutputSize(inputSizes: List<Size>): Size =
                     inputSizes.firstOrNull() ?: Size(1280, 720)
 
                 override fun getOverlaySettings(inputId: Int, presentationTimeUs: Long): OverlaySettings {
@@ -9138,6 +9132,9 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
 
         saveCurrentProject()
+        clearOverlayVideoPreviewPlayers()
+        overlayPreviewGeneration++
+        overlayPreviewExecutor.shutdown()
 
         handler.removeCallbacksAndMessages(null)
         exportFinalizeExecutor.shutdown()
