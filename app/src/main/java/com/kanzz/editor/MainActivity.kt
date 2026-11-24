@@ -6328,7 +6328,9 @@ class MainActivity : AppCompatActivity() {
     private fun clearOverlayVideoPreviewPlayers() {
         overlayVideoPreviewPlayers.values.forEach { it.release() }
         overlayVideoPreviewPlayers.clear()
-        overlayVideoPreviewViews.values.forEach(overlayVideoPreviewContainer::removeView)
+        if (::overlayVideoPreviewContainer.isInitialized) {
+            overlayVideoPreviewViews.values.forEach { overlayVideoPreviewContainer.removeView(it) }
+        }
         overlayVideoPreviewViews.clear()
     }
 
