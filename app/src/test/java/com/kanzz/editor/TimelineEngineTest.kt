@@ -153,4 +153,84 @@ class TimelineEngineTest {
         assertEquals(listOf(0L, 300L, 800L), result.clips.filter { it.trackIndex == 0 }.map { it.startTime })
     }
 
+
+    @Test fun videoCodecRoundTripPreservesClipOrderEffectsAndTransitions() {
+        val source = VideoClipManager().apply {
+            clips.add(VideoClip(
+                id = "v1", sourceUri = "content://one", sourceStartMs = 120L,
+                durationMs = 600L, sourceDurationMs = 1200L,
+                speed = 1.5f, opacity = 0.75f, filterName = "Vintage",
+                motionBlurIntensity = 0.4f,
+                colorGrading = ColorGrading(exposure = 0.3f, blueSaturation = -0.2f)
+            ))
+            clips.add(VideoClip(
+                id = "v2", sourceUri = "content://two", sourceStartMs = 0L,
+                durationMs = 400L, sourceDurationMs = 400L
+            ))
+            recalculateTimeline()
+            setTransition("v1", "v2", VideoTransition.Type.FADE, 350L)
+        }
+
+        val restored = VideoClipManager()
+        TimelineStateCodec.restoreVideo(TimelineStateCodec.encodeVideo(source), restored)
+
+        assertEquals(listOf("v1", "v2"), restored.clips.map { it.id })
+        assertEquals(120L, restored.clips.first().sourceStartMs)
+        assertEquals(1.5f, restored.clips.first().speed, 0.0001f)
+        assertEquals(0.75f, restored.clips.first().opacity, 0.0001f)
+        assertEquals("Vintage", restored.clips.first().filterName)
+        assertEquals(0.3f, restored.clips.first().colorGrading.exposure, 0.0001f)
+        assertEquals(-0.2f, restored.clips.first().colorGrading.blueSaturation, 0.0001f)
+        assertEquals(VideoTransition.Type.FADE, restored.transitionBetween("v1", "v2")!!.type)
+        assertEquals(350L, restored.transitionBetween("v1", "v2")!!.durationMs)
+    }
+
+    @Test fun videoCodecClampsUnsafeMotionBlurAndTransformValues() {
+        val manager = VideoClipManager()
+        val unsafe = """{"clips":[{"id":"safe","sourceUri":"content://safe","durationMs":500,"sourceDurationMs":500,"transformScale":99,"motionBlurIntensity":-4,"motionBlurBlend":3,"motionBlurDirection":9,"motionBlurTimes":3}]}"""
+        TimelineStateCodec.restoreVideo(unsafe, manager)
+
+        val clip = manager.clips.single()
+        assertEquals(5f, clip.transformScale, 0.0001f)
+        assertEquals(0f, clip.motionBlurIntensity, 0.0001f)
+        assertEquals(1f, clip.motionBlurBlend, 0.0001f)
+        assertEquals(2, clip.motionBlurDirection)
+        assertEquals(4, clip.motionBlurTimes)
+    }
+
+    @Test fun audioCodecRoundTripPreservesLaneAssignmentAndClipSettings() {
+        val source = AudioClipManager()
+        source.addClip(AudioClip(
+            id = "music", startTimeMs = 0L, durationMs = 1200L,
+            filePath = "/music.wav", sourceStartMs = 100L,
+            name = "Music", volume = 0.65f, speed = 1.25f,
+            sourceDurationMs = 3000L
+        ))
+        source.addClip(AudioClip(
+            id = "voice", startTimeMs = 200L, durationMs = 500L,
+            filePath = "/voice.wav", name = "Voice"
+        ))
+
+        val restored = AudioClipManager()
+        TimelineStateCodec.restoreAudio(TimelineStateCodec.encodeAudio(source), restored)
+
+        assertEquals(2, restored.clips.size)
+        assertEquals(2, restored.lanes.size)
+        assertEquals("music", restored.lanes[0].clips.single().id)
+        assertEquals("voice", restored.lanes[1].clips.single().id)
+        assertEquals(100L, restored.clips.first { it.id == "music" }.sourceStartMs)
+        assertEquals(0.65f, restored.clips.first { it.id == "music" }.volume, 0.0001f)
+        assertEquals(1.25f, restored.clips.first { it.id == "music" }.speed, 0.0001f)
+    }
+
+    @Test fun audioCodecRestoresMissingLaneMetadataWithoutDroppingClips() {
+        val manager = AudioClipManager()
+        val legacy = """{"clips":[{"id":"a","startTimeMs":0,"durationMs":500,"filePath":"/a.wav"},{"id":"b","startTimeMs":100,"durationMs":200,"filePath":"/b.wav"}]}"""
+        TimelineStateCodec.restoreAudio(legacy, manager)
+
+        assertEquals(2, manager.clips.size)
+        assertEquals(2, manager.lanes.size)
+        assertTrue(manager.lanes.all { it.clips.size == 1 })
+    }
+
 }
