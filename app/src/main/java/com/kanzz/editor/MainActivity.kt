@@ -137,6 +137,8 @@ class MainActivity : AppCompatActivity() {
     private var fontPickerClipId: String? = null
     private val textClipManager = TextClipManager()
     private val effectClipManager = EffectClipManager()
+    private val overlayClipManager = OverlayClipManager()
+    private var selectedOverlayClipId: String? = null
     private var selectedEffectClipId: String? = null
     private var effectDragUndoSaved = false
     private lateinit var effectTracksScroll: ScrollView
@@ -484,6 +486,8 @@ class MainActivity : AppCompatActivity() {
                     audioClipManager.clear()
                     textClipManager.clips.clear()
                     effectClipManager.clips.clear()
+                    overlayClipManager.clips.clear()
+                    selectedOverlayClipId = null
                     selectedEffectClipId = null
                     selectedTextClipId = null
                     activeLayerGroup = "AUDIO"
@@ -809,7 +813,7 @@ class MainActivity : AppCompatActivity() {
         // Setiap project memakai key SharedPreferences sendiri berdasarkan ID.
         val sourceId = project.id
         val editor = prefs.edit()
-        listOf("video_timeline", "audio_timeline", "text_timeline", "effect_timeline")
+        listOf("video_timeline", "audio_timeline", "text_timeline", "effect_timeline", "overlay_timeline")
             .forEach { keyPrefix ->
                 prefs.getString("${keyPrefix}_${sourceId}", null)?.let { value ->
                     editor.putString("${keyPrefix}_${newId}", value)
@@ -881,6 +885,7 @@ class MainActivity : AppCompatActivity() {
                     .remove("audio_timeline_${project.id}")
                     .remove("text_timeline_${project.id}")
                     .remove("effect_timeline_${project.id}")
+                    .remove("overlay_timeline_${project.id}")
                     .remove("preview_ratio_${project.id}")
                     .remove("preview_scale_${project.id}")
                     .remove("preview_rotation_${project.id}")
@@ -963,6 +968,8 @@ class MainActivity : AppCompatActivity() {
         audioClipManager.clear()
         textClipManager.clips.clear()
         effectClipManager.clips.clear()
+        overlayClipManager.clips.clear()
+        selectedOverlayClipId = null
         selectedEffectClipId = null
         selectedTextClipId = null
         activeLayerGroup = "AUDIO"
@@ -987,6 +994,10 @@ class MainActivity : AppCompatActivity() {
         )
         restoreTextClips(prefs.getString("text_timeline_${project.id}", null))
         restoreEffectClips(prefs.getString("effect_timeline_${project.id}", null))
+        OverlayStateCodec.restore(
+            prefs.getString("overlay_timeline_${project.id}", null),
+            overlayClipManager
+        )
 
         try {
 
@@ -3527,8 +3538,10 @@ class MainActivity : AppCompatActivity() {
                         selectedAudioClipId = null
                         selectedTextClipId = null
                         selectedEffectClipId = null
+                        selectedOverlayClipId = null
                         updateLayerGroupVisibility()
                         updateToolMenu()
+                        if (pair.second == "Overlay") showOverlayPicker()
                     }
 
                     "Pisah" -> {
@@ -4681,7 +4694,12 @@ class MainActivity : AppCompatActivity() {
         effectTracksScroll.visibility = if (activeLayerGroup == "EFFECT") View.VISIBLE else View.GONE
         if (::genericLayerPlaceholder.isInitialized) {
             genericLayerPlaceholder.visibility = if (activeLayerGroup == "OVERLAY" || activeLayerGroup == "STICKER") View.VISIBLE else View.GONE
-            genericLayerPlaceholder.text = if (activeLayerGroup == "OVERLAY") "Overlay Layer" else "Sticker Layer"
+            genericLayerPlaceholder.text = if (activeLayerGroup == "OVERLAY") {
+                "＋ Tambah Overlay  •  ${overlayClipManager.clips.size} klip"
+            } else "Sticker Layer"
+            genericLayerPlaceholder.setOnClickListener {
+                if (activeLayerGroup == "OVERLAY") showOverlayPicker()
+            }
         }
     }
 
@@ -6114,7 +6132,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun encodeTextAndEffects(): String = JSONObject()
         .put("text", JSONArray(encodeTextClips()))
-        .put("effects", JSONArray(encodeEffectClips())).toString()
+        .put("effects", JSONArray(encodeEffectClips()))
+        .put("overlays", JSONObject(OverlayStateCodec.encode(overlayClipManager)).getJSONArray("clips"))
+        .toString()
 
     private fun restoreTextAndEffects(json: String?) {
         if (json.isNullOrBlank()) { restoreTextClips(null); restoreEffectClips(null); return }
@@ -6122,6 +6142,11 @@ class MainActivity : AppCompatActivity() {
             val root = JSONObject(json)
             restoreTextClips(root.optJSONArray("text")?.toString())
             restoreEffectClips(root.optJSONArray("effects")?.toString())
+            val overlayPayload = JSONObject()
+                .put("version", 1)
+                .put("clips", root.optJSONArray("overlays") ?: JSONArray())
+                .toString()
+            OverlayStateCodec.restore(overlayPayload, overlayClipManager)
         }.onFailure {
             restoreTextClips(json)
             restoreEffectClips(null)
@@ -7310,6 +7335,7 @@ class MainActivity : AppCompatActivity() {
                 )
                 .putString("text_timeline_${it.id}", encodeTextClips())
                 .putString("effect_timeline_${it.id}", encodeEffectClips())
+                .putString("overlay_timeline_${it.id}", OverlayStateCodec.encode(overlayClipManager))
                 .apply()
         }
 
