@@ -30,6 +30,8 @@ class ExistingClipManagersTest {
             video("other", 800L).copy(sourceUri = "content://other")
         )
 
+        assertTrue(manager.setTransition("first", "other", VideoTransition.Type.FADE, 300L))
+
         val replaced = manager.replaceSourceUri("content://missing", "content://restored")
 
         assertEquals(1, replaced)
@@ -40,6 +42,8 @@ class ExistingClipManagersTest {
         assertEquals(0.4f, manager.clips[0].brightness)
         assertEquals(1.8f, manager.clips[0].transformScale)
         assertEquals("content://other", manager.clips[1].sourceUri)
+        assertEquals(VideoTransition.Type.FADE, manager.transitionBetween("first", "other")?.type)
+        assertEquals(300L, manager.transitionBetween("first", "other")?.durationMs)
         assertEquals(0, manager.replaceSourceUri("content://missing", "content://new"))
     }
 
