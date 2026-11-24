@@ -855,31 +855,33 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadProjects() {
-
-        projects.clear()
-
         val data = prefs.getString("projects", null) ?: return
 
-        try {
-
+        // Parse ke list sementara. Jangan mengosongkan daftar aktif sebelum
+        // seluruh JSON valid agar data yang sudah dimuat tidak hilang sebagian.
+        val restoredProjects = try {
             val array = JSONArray(data)
-
-            for (i in 0 until array.length()) {
-
-                val obj = array.getJSONObject(i)
-
-                projects.add(
-                    VideoProject(
-                        id = obj.getString("id"),
-                        name = obj.getString("name"),
-                        uri = obj.getString("uri"),
-                        position = obj.optLong("position", 0L),
-                        muted = obj.optBoolean("muted", false)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    add(
+                        VideoProject(
+                            id = obj.getString("id"),
+                            name = obj.getString("name"),
+                            uri = obj.getString("uri"),
+                            position = obj.optLong("position", 0L).coerceAtLeast(0L),
+                            muted = obj.optBoolean("muted", false)
+                        )
                     )
-                )
+                }
             }
+        } catch (_: Exception) {
+            // JSON rusak: pertahankan daftar project yang sedang aktif.
+            return
+        }
 
-        } catch (_: Exception) {}
+        projects.clear()
+        projects.addAll(restoredProjects)
     }
 
     // =====================================
