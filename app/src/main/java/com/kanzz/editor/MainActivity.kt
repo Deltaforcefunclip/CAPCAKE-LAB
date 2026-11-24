@@ -8124,6 +8124,38 @@ class MainActivity : AppCompatActivity() {
 
     private fun startExportVideo(outputFps: Float?, outputWidth: Int?, outputHeight: Int?) {
 
+        data class ExportImageOverlaySnapshot(
+            val bitmap: Bitmap,
+            val startTimeMs: Long,
+            val endTimeMs: Long,
+            val positionX: Float,
+            val positionY: Float,
+            val scale: Float,
+            val rotation: Float,
+            val opacity: Float
+        )
+        // Decode sekali sebelum Transformer berjalan. Callback CanvasOverlay hanya
+        // membaca snapshot immutable dan tidak mengakses ContentResolver/View.
+        val exportImageOverlays = overlayClipManager.clips
+            .filter { it.mediaType == OverlayClip.Type.IMAGE }
+            .mapNotNull { overlay ->
+                val bitmap = runCatching {
+                    contentResolver.openInputStream(Uri.parse(overlay.sourceUri))?.use {
+                        BitmapFactory.decodeStream(it)
+                    }
+                }.getOrNull() ?: return@mapNotNull null
+                ExportImageOverlaySnapshot(
+                    bitmap = bitmap,
+                    startTimeMs = overlay.startTimeMs,
+                    endTimeMs = overlay.endTimeMs,
+                    positionX = overlay.positionX,
+                    positionY = overlay.positionY,
+                    scale = overlay.scale.coerceIn(0.05f, 10f),
+                    rotation = overlay.rotation,
+                    opacity = overlay.opacity.coerceIn(0f, 1f)
+                )
+            }
+
         val editedItems = try {
             videoClipManager.clips.map { clip ->
                 val cachedMotionBlur = motionBlurCacheFile(clip)
@@ -8427,6 +8459,32 @@ class MainActivity : AppCompatActivity() {
                                                     }
                                                     canvas.restore()
                                                     textPaint.clearShadowLayer()
+                                                }
+
+                                                val imagePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+                                                exportImageOverlays.forEach { image ->
+                                                    if (globalMs < image.startTimeMs || globalMs >= image.endTimeMs) {
+                                                        return@forEach
+                                                    }
+                                                    val baseWidth = previewContentW * 0.5f * image.scale
+                                                    val baseHeight = baseWidth *
+                                                        image.bitmap.height.toFloat() /
+                                                        image.bitmap.width.toFloat().coerceAtLeast(1f)
+                                                    val centerX = canvas.width / 2f + image.positionX * sx
+                                                    val centerY = canvas.height / 2f + image.positionY * sy
+                                                    val drawWidth = baseWidth * sx
+                                                    val drawHeight = baseHeight * sy
+                                                    imagePaint.alpha = (255f * image.opacity).toInt().coerceIn(0, 255)
+                                                    val destination = RectF(
+                                                        centerX - drawWidth / 2f,
+                                                        centerY - drawHeight / 2f,
+                                                        centerX + drawWidth / 2f,
+                                                        centerY + drawHeight / 2f
+                                                    )
+                                                    canvas.save()
+                                                    canvas.rotate(image.rotation, centerX, centerY)
+                                                    canvas.drawBitmap(image.bitmap, null, destination, imagePaint)
+                                                    canvas.restore()
                                                 }
                                             } catch (_: Exception) {
                                                 // Error gambar satu frame tidak boleh menghentikan ekspor.
