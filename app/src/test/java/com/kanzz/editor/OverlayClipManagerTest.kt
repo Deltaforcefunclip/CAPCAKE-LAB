@@ -110,6 +110,32 @@ class OverlayClipManagerTest {
         assertTrue(manager.trim("b", 1000L, 500L))
     }
 
+    @Test fun trimVideoUpdatesSourceRangeAndRejectsInvalidExtension() {
+        val manager = OverlayClipManager()
+        val clip = overlay("trim", 1000L, 2000L, sourceDuration = 2000L)
+        manager.add(clip)
+
+        assertTrue(manager.trim("trim", 1500L, 1000L))
+        assertEquals(1500L, clip.startTimeMs)
+        assertEquals(1000L, clip.durationMs)
+        assertEquals(500L, clip.sourceStartMs)
+        assertEquals(1000L, clip.sourceDurationMs)
+
+        assertFalse(manager.trim("trim", 1500L, 1500L))
+        assertEquals(500L, clip.sourceStartMs)
+        assertEquals(1000L, clip.sourceDurationMs)
+    }
+
+    @Test fun trimImageChangesTimelineButKeepsImageSourceRange() {
+        val manager = OverlayClipManager()
+        val clip = overlay("image-trim", 0L, 3000L, type = OverlayClip.Type.IMAGE)
+        manager.add(clip)
+
+        assertTrue(manager.trim("image-trim", 500L, 1500L))
+        assertEquals(0L, clip.sourceStartMs)
+        assertEquals(3000L, clip.sourceDurationMs)
+    }
+
     @Test fun removeCompactsLanesAndUnknownIdsAreSafe() {
         val manager = OverlayClipManager()
         val first = overlay("a", 0L, 500L, lane = 0)
