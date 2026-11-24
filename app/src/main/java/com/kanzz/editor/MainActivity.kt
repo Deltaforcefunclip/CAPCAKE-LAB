@@ -565,9 +565,15 @@ class MainActivity : AppCompatActivity() {
         ) { uri ->
             val category = pendingLibraryCategory
             pendingLibraryCategory = null
-            if (uri != null && category != null) {
-                // Penyalinan file dilakukan di background; dialog baru dibuka setelah selesai.
-                saveAudioToLibrary(uri, category)
+            if (uri != null) {
+                if (category != null) {
+                    // Penyalinan file dilakukan di background; dialog baru dibuka setelah selesai.
+                    saveAudioToLibrary(uri, category)
+                } else {
+                    // Pemilih dari tombol impor timeline harus meneruskan URI ke timeline,
+                    // bukan hanya menangani impor ke perpustakaan audio.
+                    importAudio(uri)
+                }
             }
         }
 
