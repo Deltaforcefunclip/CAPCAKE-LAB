@@ -841,13 +841,14 @@ class MainActivity : AppCompatActivity() {
                 // berdasarkan ID project agar duplikat/project lain aman.
                 File(cacheDir, "preview_proxies/${project.id}").deleteRecursively()
 
-                // Hapus data timeline tersimpan agar project yang dihapus
-                // tidak meninggalkan data yatim di SharedPreferences.
+                // Hapus seluruh data project agar tidak meninggalkan key yatim.
                 prefs.edit()
                     .remove("video_timeline_${project.id}")
                     .remove("audio_timeline_${project.id}")
                     .remove("text_timeline_${project.id}")
                     .remove("effect_timeline_${project.id}")
+                    .remove("preview_ratio_${project.id}")
+                    .remove("preview_scale_${project.id}")
                     .apply()
 
                 saveProjects()
@@ -920,7 +921,7 @@ class MainActivity : AppCompatActivity() {
 
         currentProject = project
 
-        // Audio clip belum disimpan ke data project.
+        // Bersihkan state project sebelumnya sebelum memuat seluruh layer project ini.
         audioClipManager.clear()
         textClipManager.clips.clear()
         effectClipManager.clips.clear()
