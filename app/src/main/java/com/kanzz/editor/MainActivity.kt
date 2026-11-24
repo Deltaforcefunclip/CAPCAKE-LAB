@@ -765,10 +765,38 @@ class MainActivity : AppCompatActivity() {
 
     private fun duplicateProject(project: VideoProject) {
 
+        val newId = System.currentTimeMillis().toString().let { timestamp ->
+            var candidate = timestamp
+            var suffix = 1
+            while (projects.any { it.id == candidate }) {
+                candidate = "${timestamp}_${suffix++}"
+            }
+            candidate
+        }
         val copy = project.copy(
-            id = System.currentTimeMillis().toString(),
+            id = newId,
             name = project.name + " Copy"
         )
+
+        // Duplikasi harus menyalin isi timeline, bukan hanya metadata project.
+        // Setiap project memakai key SharedPreferences sendiri berdasarkan ID.
+        val sourceId = project.id
+        val editor = prefs.edit()
+        listOf("video_timeline", "audio_timeline", "text_timeline", "effect_timeline")
+            .forEach { keyPrefix ->
+                prefs.getString("${keyPrefix}_${sourceId}", null)?.let { value ->
+                    editor.putString("${keyPrefix}_${newId}", value)
+                }
+            }
+        listOf("preview_ratio", "preview_scale").forEach { keyPrefix ->
+            prefs.all["${keyPrefix}_${sourceId}"]?.let { value ->
+                when (value) {
+                    is String -> editor.putString("${keyPrefix}_${newId}", value)
+                    is Float -> editor.putFloat("${keyPrefix}_${newId}", value)
+                }
+            }
+        }
+        editor.apply()
 
         projects.add(0, copy)
         saveProjects()
