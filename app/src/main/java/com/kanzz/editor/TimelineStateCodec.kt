@@ -90,7 +90,7 @@ object TimelineStateCodec {
         val restored = VideoClipManager()
         try {
             val root = JSONObject(json)
-            val clips = root.optJSONArray("clips") ?: JSONArray()
+            val clips = root.getJSONArray("clips")
             for (i in 0 until clips.length()) {
                 val item = clips.getJSONObject(i)
                 restored.clips.add(VideoClip(
@@ -211,7 +211,7 @@ object TimelineStateCodec {
         if (json.isNullOrBlank()) return
         val restored = AudioClipManager()
         try {
-            val clips = JSONObject(json).optJSONArray("clips") ?: JSONArray()
+            val clips = JSONObject(json).getJSONArray("clips")
             for (i in 0 until clips.length()) {
                 val item = clips.getJSONObject(i)
                 val clip = AudioClip(
