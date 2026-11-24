@@ -1014,10 +1014,13 @@ class MainActivity : AppCompatActivity() {
         )
         restoreTextClips(prefs.getString("text_timeline_${project.id}", null))
         restoreEffectClips(prefs.getString("effect_timeline_${project.id}", null))
-        OverlayStateCodec.restore(
+        val overlayRestored = OverlayStateCodec.restore(
             prefs.getString("overlay_timeline_${project.id}", null),
             overlayClipManager
         )
+        if (!overlayRestored) {
+            showMessage("Data Overlay project ini rusak. Data tersimpan tetap dipertahankan, tetapi layer tidak dimuat.")
+        }
 
         try {
 
