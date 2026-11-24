@@ -143,6 +143,8 @@ class MainActivity : AppCompatActivity() {
     private var effectDragUndoSaved = false
     private lateinit var effectTracksScroll: ScrollView
     private lateinit var thisEffectTracksContainer: LinearLayout
+    private lateinit var overlayTracksScroll: ScrollView
+    private lateinit var thisOverlayTracksContainer: LinearLayout
     private var selectedTextClipId: String? = null
     private var textDragUndoSaved = false
     private var activeLayerGroup = "AUDIO"
@@ -587,6 +589,11 @@ class MainActivity : AppCompatActivity() {
                     importAudio(uri)
                 }
             }
+        }
+
+    private val pickOverlayMedia =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) importOverlayMedia(uri)
         }
 
     // =====================================
@@ -2157,6 +2164,17 @@ class MainActivity : AppCompatActivity() {
             addView(effectTracksContainer, android.view.ViewGroup.LayoutParams(-1, -2)); visibility = View.GONE
         }
         thisEffectTracksContainer = effectTracksContainer
+        val overlayTracksContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(bg)
+        }
+        overlayTracksScroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            isFillViewport = false
+            addView(overlayTracksContainer, android.view.ViewGroup.LayoutParams(-1, -2))
+            visibility = View.GONE
+        }
+        thisOverlayTracksContainer = overlayTracksContainer
         val textTracksContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
@@ -2554,6 +2572,7 @@ class MainActivity : AppCompatActivity() {
             FrameLayout.LayoutParams(-1, -1)
         )
         audioTimelineFrame.addView(effectTracksScroll, FrameLayout.LayoutParams(-1, -1))
+        audioTimelineFrame.addView(overlayTracksScroll, FrameLayout.LayoutParams(-1, -1))
         genericLayerPlaceholder = TextView(this).apply {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(12), 0, dp(12), 0)
@@ -2589,6 +2608,7 @@ class MainActivity : AppCompatActivity() {
         refreshAudioTracks()
         refreshTextTracks()
         refreshEffectTracks()
+        refreshOverlayTracks()
 
         // PANEL FONT dibuat sebagai overlay terpisah agar tidak mengubah ukuran
         // root dan tidak mendorong menu utama ke luar layar.
@@ -3745,6 +3765,64 @@ class MainActivity : AppCompatActivity() {
     private fun buildDreamyVideoEffects(amount: Float): List<androidx.media3.common.Effect> =
         if (amount > 0.001f) listOf(buildDreamyColorMatrix(amount)) else emptyList()
 
+    private fun showOverlayPicker() {
+        if (currentProject == null) {
+            showMessage("Buka project terlebih dahulu.")
+            return
+        }
+        pickOverlayMedia.launch(arrayOf("image/*", "video/*"))
+    }
+
+    private fun importOverlayMedia(uri: Uri) {
+        try {
+            contentResolver.takePersistableUriPermission(
+                uri,
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        } catch (_: Exception) {
+            showMessage("Izin akses file overlay tidak dapat disimpan.")
+            return
+        }
+
+        val mime = contentResolver.getType(uri).orEmpty()
+        val type = if (mime.startsWith("video/")) OverlayClip.Type.VIDEO else OverlayClip.Type.IMAGE
+        val sourceDuration = if (type == OverlayClip.Type.VIDEO) {
+            runCatching {
+                MediaMetadataRetriever().let { retriever ->
+                    try {
+                        retriever.setDataSource(this, uri)
+                        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                            ?.toLongOrNull() ?: 0L
+                    } finally {
+                        retriever.release()
+                    }
+                }
+            }.getOrDefault(0L)
+        } else 5_000L
+
+        if (type == OverlayClip.Type.VIDEO && sourceDuration <= 0L) {
+            showMessage("Durasi video overlay tidak dapat dibaca.")
+            return
+        }
+
+        pushUndoSnapshot()
+        val clip = OverlayClip(
+            sourceUri = uri.toString(),
+            mediaType = type,
+            startTimeMs = currentTimelinePosition().coerceAtLeast(0L),
+            durationMs = sourceDuration.coerceAtLeast(1L),
+            sourceStartMs = 0L,
+            sourceDurationMs = sourceDuration.coerceAtLeast(1L)
+        )
+        overlayClipManager.add(clip)
+        selectedOverlayClipId = clip.id
+        activeLayerGroup = "OVERLAY"
+        refreshOverlayTracks()
+        saveCurrentProject()
+        updateToolMenu()
+        showMessage(if (type == OverlayClip.Type.VIDEO) "Video overlay ditambahkan ke timeline." else "Gambar overlay ditambahkan ke timeline.")
+    }
+
     private fun showEffectPicker() {
         val options = listOf("Cahaya Lembut", "Dreamy", "Vintage", "Black & White", "Warm", "Cool")
         var chosen = options.first()
@@ -4692,15 +4770,84 @@ class MainActivity : AppCompatActivity() {
         audioTracksScroll.visibility = if (activeLayerGroup == "AUDIO") View.VISIBLE else View.GONE
         textTracksScroll.visibility = if (activeLayerGroup == "TEXT") View.VISIBLE else View.GONE
         effectTracksScroll.visibility = if (activeLayerGroup == "EFFECT") View.VISIBLE else View.GONE
-        if (::genericLayerPlaceholder.isInitialized) {
-            genericLayerPlaceholder.visibility = if (activeLayerGroup == "OVERLAY" || activeLayerGroup == "STICKER") View.VISIBLE else View.GONE
-            genericLayerPlaceholder.text = if (activeLayerGroup == "OVERLAY") {
-                "＋ Tambah Overlay  •  ${overlayClipManager.clips.size} klip"
-            } else "Sticker Layer"
-            genericLayerPlaceholder.setOnClickListener {
-                if (activeLayerGroup == "OVERLAY") showOverlayPicker()
-            }
+        if (::overlayTracksScroll.isInitialized) {
+            overlayTracksScroll.visibility = if (activeLayerGroup == "OVERLAY") View.VISIBLE else View.GONE
         }
+        if (::genericLayerPlaceholder.isInitialized) {
+            genericLayerPlaceholder.visibility = if (activeLayerGroup == "STICKER") View.VISIBLE else View.GONE
+            genericLayerPlaceholder.text = "Sticker Layer"
+        }
+    }
+
+    private fun invalidateOverlayTrackViews() {
+        if (!::thisOverlayTracksContainer.isInitialized) return
+        for (i in 0 until thisOverlayTracksContainer.childCount) {
+            thisOverlayTracksContainer.getChildAt(i).postInvalidateOnAnimation()
+        }
+    }
+
+    private fun refreshOverlayTracks() {
+        if (!::thisOverlayTracksContainer.isInitialized) return
+        thisOverlayTracksContainer.removeAllViews()
+        val laneCount = (overlayClipManager.clips.maxOfOrNull { it.trackIndex } ?: 0) + 1
+        repeat(laneCount.coerceAtLeast(1)) { lane ->
+            val view = OverlayTrackView(
+                this,
+                timelineController,
+                lane,
+                { overlayClipManager.clips },
+                onSelected = { clip ->
+                    selectedOverlayClipId = clip?.id
+                    selectedVideoClipId = null
+                    selectedAudioClipId = null
+                    selectedTextClipId = null
+                    selectedEffectClipId = null
+                    videoSelected = false
+                    clearAudioTrackSelection()
+                    timeline.selectClip(null)
+                    timeline.updateSelection(false)
+                    for (i in 0 until thisOverlayTracksContainer.childCount) {
+                        (thisOverlayTracksContainer.getChildAt(i) as? OverlayTrackView)?.select(clip?.id)
+                    }
+                    updateToolMenu()
+                },
+                onMove = { clip, newStart ->
+                    pushUndoSnapshot()
+                    if (!overlayClipManager.moveClip(clip.id, newStart, clip.trackIndex)) {
+                        showMessage("Posisi overlay bertabrakan dengan klip lain pada track ini.")
+                    }
+                },
+                onTrim = { clip, newStart, newDuration ->
+                    pushUndoSnapshot()
+                    if (!overlayClipManager.trim(clip.id, newStart, newDuration)) {
+                        showMessage("Batas trim overlay tidak valid atau bertabrakan.")
+                    }
+                },
+                onChanged = {
+                    refreshOverlayTracks()
+                    saveCurrentProject()
+                    updateToolMenu()
+                },
+                onTimelineScrolled = { position ->
+                    pendingScrubPositionMs = position
+                    if (!isTimelineScrubbing) {
+                        isTimelineScrubbing = true
+                        if (player.isPlaying) player.pause()
+                        player.setScrubbingModeEnabled(true)
+                        updatePlayButton()
+                    }
+                    seekTimelinePosition(position)
+                    handler.removeCallbacks(scrubFinishRunnable)
+                    handler.postDelayed(scrubFinishRunnable, 140L)
+                    updateTime()
+                    timeline.postInvalidateOnAnimation()
+                    invalidateOverlayTrackViews()
+                }
+            )
+            view.select(selectedOverlayClipId)
+            thisOverlayTracksContainer.addView(view, LinearLayout.LayoutParams(-1, dp(36)))
+        }
+        updateLayerGroupVisibility()
     }
 
     private fun invalidateTextTrackViews() {
@@ -7395,6 +7542,7 @@ class MainActivity : AppCompatActivity() {
         invalidateTextTrackViews()
         // Effect clips juga harus mengikuti playhead pada setiap frame playback.
         invalidateEffectTrackViews()
+        invalidateOverlayTrackViews()
         // Sinkronkan transformasi gambar dengan klip yang tepat di bawah playhead.
         applyPreviewTransform()
         updateDreamyPreviewOverlay()
