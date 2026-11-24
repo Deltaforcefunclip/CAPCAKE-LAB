@@ -3916,6 +3916,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showOverlayOpacityDialog(clip: OverlayClip) {
         val original = clip.opacity
+        pushUndoSnapshot()
         val seek = SeekBar(this).apply {
             max = 100
             progress = (original * 100f).toInt().coerceIn(0, 100)
@@ -3944,10 +3945,10 @@ class MainActivity : AppCompatActivity() {
             .setView(box)
             .setNegativeButton("Batal") { _, _ ->
                 clip.opacity = original
+                undoStack.removeLastOrNull()
                 refreshOverlayTracks()
             }
             .setPositiveButton("Simpan") { _, _ ->
-                pushUndoSnapshot()
                 saveCurrentProject()
                 refreshOverlayTracks()
             }
@@ -3956,6 +3957,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showOverlayTransformDialog(clip: OverlayClip) {
         val original = listOf(clip.positionX, clip.positionY, clip.scale, clip.rotation)
+        pushUndoSnapshot()
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(12), dp(20), dp(8))
@@ -3993,9 +3995,9 @@ class MainActivity : AppCompatActivity() {
                 clip.positionY = original[1]
                 clip.scale = original[2]
                 clip.rotation = original[3]
+                undoStack.removeLastOrNull()
             }
             .setPositiveButton("Simpan") { _, _ ->
-                pushUndoSnapshot()
                 saveCurrentProject()
                 refreshOverlayTracks()
             }
@@ -4999,6 +5001,7 @@ class MainActivity : AppCompatActivity() {
                 this, timelineController, lane, { effectClipManager.clips },
                 onSelected = { clip ->
                     selectedEffectClipId = clip?.id
+                    selectedOverlayClipId = null
                     selectedTextClipId = null
                     selectedAudioClipId = null
                     selectedVideoClipId = null
@@ -5096,6 +5099,7 @@ class MainActivity : AppCompatActivity() {
                 allClips = { textClipManager.clips },
                 onSelected = { clip ->
                     selectedTextClipId = clip?.id
+                    selectedOverlayClipId = null
                     if (clip == null && player.isPlaying) {
                         player.pause()
                         updatePlayButton()
@@ -6483,6 +6487,7 @@ class MainActivity : AppCompatActivity() {
                 lane,
                 onClipSelected = { clip ->
                     selectedAudioClipId = clip?.id
+                    selectedOverlayClipId = null
                     if (clip == null && player.isPlaying) {
                         player.pause()
                         updatePlayButton()
@@ -7553,6 +7558,7 @@ class MainActivity : AppCompatActivity() {
         refreshAudioTracks()
         refreshTextTracks()
         refreshEffectTracks()
+        refreshOverlayTracks()
         if (::timeline.isInitialized) {
             timeline.selectClip(selectedVideoClipId)
             // setDuration mempertahankan tingkat zoom yang sedang dipakai.
