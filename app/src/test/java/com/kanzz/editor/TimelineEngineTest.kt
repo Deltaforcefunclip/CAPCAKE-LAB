@@ -109,4 +109,39 @@ class TimelineEngineTest {
         assertTrue(updated.sourceEnd <= updated.sourceDuration)
         assertTrue(updated.duration > 0)
     }
+    @Test fun corruptVideoProjectDoesNotClearExistingTimeline() {
+        val manager = VideoClipManager().apply { setSource("content://existing", 900) }
+        TimelineStateCodec.restoreVideo("{not valid json", manager)
+        assertEquals(1, manager.clips.size)
+        assertEquals("content://existing", manager.clips.single().sourceUri)
+    }
+
+    @Test fun legacyVideoProjectUsesSafeDefaults() {
+        val manager = VideoClipManager()
+        val legacy = """{"clips":[{"id":"legacy","sourceUri":"content://legacy","durationMs":700}]}"""
+        TimelineStateCodec.restoreVideo(legacy, manager)
+        assertEquals(1, manager.clips.size)
+        assertEquals(700L, manager.clips.single().sourceDurationMs)
+        assertEquals(1f, manager.clips.single().speed)
+        assertEquals(1f, manager.clips.single().opacity)
+    }
+
+    @Test fun corruptAudioProjectDoesNotClearExistingTimeline() {
+        val manager = AudioClipManager().apply {
+            addClip(AudioClip(id = "existing", startTimeMs = 0, durationMs = 500, filePath = "/audio.wav"))
+        }
+        TimelineStateCodec.restoreAudio("{broken", manager)
+        assertEquals(1, manager.clips.size)
+        assertEquals("existing", manager.clips.single().id)
+    }
+
+    @Test fun legacyAudioProjectRestoresIntoLane() {
+        val manager = AudioClipManager()
+        val legacy = """{"clips":[{"id":"audio-1","startTimeMs":100,"durationMs":600,"filePath":"/audio.wav"}]}"""
+        TimelineStateCodec.restoreAudio(legacy, manager)
+        assertEquals(1, manager.clips.size)
+        assertEquals(1, manager.lanes.size)
+        assertEquals("audio-1", manager.lanes.single().clips.single().id)
+    }
+
 }
