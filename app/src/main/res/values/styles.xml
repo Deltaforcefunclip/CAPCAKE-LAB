@@ -1,0 +1,21 @@
+<resources>
+    <style name="AppTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#18D58A</item>
+        <item name="colorPrimaryVariant">#079B62</item>
+        <item name="colorSecondary">#18D58A</item>
+        <item name="android:statusBarColor">#101010</item>
+        <item name="android:navigationBarColor">#101010</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowBackground">#101010</item>
+        <item name="android:windowAnimationStyle">@style/CapcakeWindowAnimation</item>
+    </style>
+
+    <style name="CapcakeWindowAnimation">
+        <item name="android:windowEnterAnimation">@anim/popup_enter</item>
+        <item name="android:windowExitAnimation">@anim/popup_exit</item>
+    </style>
+    <style name="CapcakeBottomSheetAnimation">
+        <item name="android:windowEnterAnimation">@anim/popup_slide_up_enter</item>
+        <item name="android:windowExitAnimation">@anim/popup_slide_down_exit</item>
+    </style>
+</resources>
