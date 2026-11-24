@@ -175,9 +175,33 @@ class MoveClipCommand(
         if (track != 0 && others.any {
                 it.trackIndex == track && start < it.endTime && start + moving.duration > it.startTime
             }) return state
-        var next = state.copy(clips = others + moved)
-        if (track == 0) next = normalizeMainTrack(next)
-        return next
+        if (track == 0) {
+            // Determine insertion from the requested time against the remaining
+            // main-track boundaries, then normalize in that explicit order.
+            val orderedMain = others.filter { it.trackIndex == 0 }
+                .sortedBy { it.startTime }.toMutableList()
+            var cursor = 0L
+            var insertIndex = 0
+            var nearestDistance = Long.MAX_VALUE
+            for (index in 0..orderedMain.size) {
+                val distance = abs(cursor - start)
+                if (distance < nearestDistance) {
+                    nearestDistance = distance
+                    insertIndex = index
+                }
+                if (index < orderedMain.size) cursor += orderedMain[index].duration
+            }
+            orderedMain.add(insertIndex, moved)
+            var timelineCursor = 0L
+            val normalizedMain = orderedMain.map { clip ->
+                clip.copy(startTime = timelineCursor).also {
+                    timelineCursor += it.duration
+                }
+            }
+            val overlays = others.filter { it.trackIndex != 0 }
+            return state.copy(clips = normalizedMain + overlays)
+        }
+        return state.copy(clips = others + moved)
     }
 }
 
