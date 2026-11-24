@@ -14,7 +14,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
-import android.util.Size
+import androidx.media3.common.util.Size
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.view.Gravity
