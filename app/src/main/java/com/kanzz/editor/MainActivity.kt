@@ -505,8 +505,21 @@ class MainActivity : AppCompatActivity() {
 
                 } else {
 
-                    currentProject?.let {
-                        it.uri = uri.toString()
+                    currentProject?.let { project ->
+                        val previousUri = project.uri
+                        project.uri = uri.toString()
+
+                        // Saat sumber utama hilang, ganti referensinya pada semua
+                        // segmen yang memakai sumber lama tanpa menghapus hasil edit.
+                        videoClipManager.replaceSourceUri(previousUri, uri.toString())
+
+                        // Simpan timeline yang sudah diperbarui sebelum editor dibuka.
+                        prefs.edit()
+                            .putString(
+                                "video_timeline_${project.id}",
+                                TimelineStateCodec.encodeVideo(videoClipManager)
+                            )
+                            .apply()
                     }
                 }
 
