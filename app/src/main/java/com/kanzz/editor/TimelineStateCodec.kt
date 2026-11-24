@@ -227,8 +227,11 @@ object TimelineStateCodec {
                 )
                 val laneIndex = item.optInt("laneIndex", -1)
                 if (laneIndex >= 0) {
-                    while (restored.lanes.size <= laneIndex) restored.lanes.add(AudioLane())
-                    val lane = restored.lanes[laneIndex]
+                    // Jumlah lane tidak mungkin melebihi jumlah clip. Batasi
+                    // metadata rusak agar tidak membuat ribuan/jutaan lane.
+                    val safeLaneIndex = laneIndex.coerceAtMost(clips.length() - 1)
+                    while (restored.lanes.size <= safeLaneIndex) restored.lanes.add(AudioLane())
+                    val lane = restored.lanes[safeLaneIndex]
                     if (lane.clips.none { existing ->
                             clip.startTimeMs < existing.endTimeMs &&
                                 clip.endTimeMs > existing.startTimeMs
