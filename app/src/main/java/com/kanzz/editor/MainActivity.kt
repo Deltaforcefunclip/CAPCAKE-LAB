@@ -788,7 +788,14 @@ class MainActivity : AppCompatActivity() {
                     editor.putString("${keyPrefix}_${newId}", value)
                 }
             }
-        listOf("preview_ratio", "preview_scale", "dreamy_intensity").forEach { keyPrefix ->
+        listOf(
+            "preview_ratio",
+            "preview_scale",
+            "preview_rotation",
+            "preview_tx",
+            "preview_ty",
+            "dreamy_intensity"
+        ).forEach { keyPrefix ->
             prefs.all["${keyPrefix}_${sourceId}"]?.let { value ->
                 when (value) {
                     is String -> editor.putString("${keyPrefix}_${newId}", value)
@@ -849,6 +856,9 @@ class MainActivity : AppCompatActivity() {
                     .remove("effect_timeline_${project.id}")
                     .remove("preview_ratio_${project.id}")
                     .remove("preview_scale_${project.id}")
+                    .remove("preview_rotation_${project.id}")
+                    .remove("preview_tx_${project.id}")
+                    .remove("preview_ty_${project.id}")
                     .remove("dreamy_intensity_${project.id}")
                     .apply()
 
