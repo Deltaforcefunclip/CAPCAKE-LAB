@@ -419,6 +419,9 @@ class MainActivity : AppCompatActivity() {
         getSharedPreferences("CAPCAKE_PROJECTS", MODE_PRIVATE)
     }
 
+    // Simpan posisi playback berkala tanpa menulis ulang seluruh data timeline.
+    private var lastPlaybackPositionSaveElapsedMs = 0L
+
     // =====================================
     // PLAYBACK UPDATER
     // =====================================
@@ -7305,6 +7308,7 @@ class MainActivity : AppCompatActivity() {
                 .apply()
         }
 
+        lastPlaybackPositionSaveElapsedMs = SystemClock.elapsedRealtime()
         saveProjects()
     }
 
@@ -7366,6 +7370,16 @@ class MainActivity : AppCompatActivity() {
         updateTextPreview(force = false)
 
         currentProject?.position = position
+
+        // onPause() tetap menjadi penyimpanan utama. Penyimpanan berkala ini
+        // mengurangi kehilangan posisi jika proses aplikasi dihentikan mendadak.
+        if (currentProject != null) {
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastPlaybackPositionSaveElapsedMs >= 5_000L) {
+                lastPlaybackPositionSaveElapsedMs = now
+                saveProjects()
+            }
+        }
     }
 
     // =====================================
