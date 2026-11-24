@@ -8086,18 +8086,14 @@ class MainActivity : AppCompatActivity() {
             // Setiap layer audio menjadi sequence terpisah agar beberapa layer dapat
             // bercampur bersamaan, sementara addGap menjaga posisi klip di timeline.
             audioClipManager.lanes.forEach { lane ->
-                val laneClips = lane.clips
-                    .filter { it.durationMs > 0L && it.filePath.isNotBlank() }
-                    .sortedBy { it.startTimeMs }
-                if (laneClips.isNotEmpty()) {
+                val lanePlan = AudioLaneExportPlanner.plan(lane.clips)
+                if (lanePlan.isNotEmpty()) {
                     val audioSequence = EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_AUDIO))
-                    var cursorMs = 0L
 
-                    laneClips.forEach { clip ->
-                        val clipStartMs = clip.startTimeMs.coerceAtLeast(0L)
-                        val gapMs = (clipStartMs - cursorMs).coerceAtLeast(0L)
-                        if (gapMs > 0L) {
-                            audioSequence.addGap(gapMs * 1000L)
+                    lanePlan.forEach { segment ->
+                        val clip = segment.clip
+                        if (segment.gapBeforeMs > 0L) {
+                            audioSequence.addGap(segment.gapBeforeMs * 1000L)
                         }
 
                         val audioMediaItem = MediaItem.Builder()
@@ -8137,7 +8133,6 @@ class MainActivity : AppCompatActivity() {
                             .build()
 
                         audioSequence.addItem(audioEditedItem)
-                        cursorMs = maxOf(cursorMs, clipStartMs + clip.durationMs)
                     }
 
                     sequences.add(audioSequence.build())
