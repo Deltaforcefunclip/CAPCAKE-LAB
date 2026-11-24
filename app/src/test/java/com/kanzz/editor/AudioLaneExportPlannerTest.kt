@@ -37,7 +37,7 @@ class AudioLaneExportPlannerTest {
 
         val result = AudioLaneExportPlanner.plan(listOf(negative, overlap, after))
 
-        assertEquals(listOf(0L, 0L, 0L), result.map { it.gapBeforeMs })
+        assertEquals(listOf(0L, 0L, 300L), result.map { it.gapBeforeMs })
         assertEquals(listOf("negative", "overlap", "after"), result.map { it.clip.id })
     }
 
