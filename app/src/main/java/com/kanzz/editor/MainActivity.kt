@@ -139,6 +139,10 @@ class MainActivity : AppCompatActivity() {
     private val effectClipManager = EffectClipManager()
     private val overlayClipManager = OverlayClipManager()
     private var selectedOverlayClipId: String? = null
+    private lateinit var overlayPreviewImageView: ImageView
+    private val overlayPreviewExecutor = Executors.newSingleThreadExecutor()
+    private var overlayPreviewGeneration = 0
+    private var lastOverlayPreviewClipId: String? = null
     private var selectedEffectClipId: String? = null
     private var effectDragUndoSaved = false
     private lateinit var effectTracksScroll: ScrollView
@@ -1621,6 +1625,16 @@ class MainActivity : AppCompatActivity() {
         previewFrame.addView(
             playerView,
             FrameLayout.LayoutParams(-1, -1)
+        )
+        overlayPreviewImageView = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            visibility = View.GONE
+            isClickable = false
+            isFocusable = false
+        }
+        previewFrame.addView(
+            overlayPreviewImageView,
+            FrameLayout.LayoutParams(dp(180), dp(180), Gravity.CENTER)
         )
 
         dreamyPreviewOverlay = View(this).apply {
@@ -3864,6 +3878,7 @@ class MainActivity : AppCompatActivity() {
         activeLayerGroup = "OVERLAY"
         refreshOverlayTracks()
         saveCurrentProject()
+        updateOverlayPreview()
         updateToolMenu()
         showMessage(if (type == OverlayClip.Type.VIDEO) "Video overlay ditambahkan ke timeline." else "Gambar overlay ditambahkan ke timeline.")
     }
@@ -6285,6 +6300,63 @@ class MainActivity : AppCompatActivity() {
 
     private var lastPreviewTextStateKey: Long = Long.MIN_VALUE
 
+    /** Preview image overlay teratas mengikuti playhead project. */
+    private fun updateOverlayPreview() {
+        if (!::overlayPreviewImageView.isInitialized) return
+        val position = currentTimelinePosition()
+        val clip = overlayClipManager.clips
+            .filter {
+                it.mediaType == OverlayClip.Type.IMAGE &&
+                    position >= it.startTimeMs && position < it.endTimeMs
+            }
+            .maxByOrNull { it.trackIndex }
+
+        if (clip == null) {
+            if (lastOverlayPreviewClipId != null) {
+                overlayPreviewGeneration++
+                lastOverlayPreviewClipId = null
+                overlayPreviewImageView.setImageDrawable(null)
+            }
+            overlayPreviewImageView.visibility = View.GONE
+            return
+        }
+
+        overlayPreviewImageView.visibility = View.VISIBLE
+        overlayPreviewImageView.alpha = clip.opacity.coerceIn(0f, 1f)
+        overlayPreviewImageView.scaleX = clip.scale.coerceIn(0.05f, 10f)
+        overlayPreviewImageView.scaleY = clip.scale.coerceIn(0.05f, 10f)
+        overlayPreviewImageView.rotation = clip.rotation
+        overlayPreviewImageView.translationX = clip.positionX
+        overlayPreviewImageView.translationY = clip.positionY
+
+        if (lastOverlayPreviewClipId == clip.id) return
+        lastOverlayPreviewClipId = clip.id
+        val generation = ++overlayPreviewGeneration
+        overlayPreviewImageView.setImageDrawable(null)
+        overlayPreviewExecutor.execute {
+            val bitmap = runCatching {
+                contentResolver.openInputStream(Uri.parse(clip.sourceUri))?.use {
+                    BitmapFactory.decodeStream(it)
+                }
+            }.getOrNull()
+            runOnUiThread {
+                if (generation != overlayPreviewGeneration ||
+                    lastOverlayPreviewClipId != clip.id ||
+                    !::overlayPreviewImageView.isInitialized
+                ) {
+                    bitmap?.recycle()
+                    return@runOnUiThread
+                }
+                if (bitmap == null) {
+                    overlayPreviewImageView.visibility = View.GONE
+                    showMessage("Gambar overlay tidak dapat dibaca.")
+                } else {
+                    overlayPreviewImageView.setImageBitmap(bitmap)
+                }
+            }
+        }
+    }
+
     private fun updateTextPreview(force: Boolean = true) {
         if (!::previewTextOverlay.isInitialized) return
 
@@ -7685,6 +7757,7 @@ class MainActivity : AppCompatActivity() {
         // Sinkronkan transformasi gambar dengan klip yang tepat di bawah playhead.
         applyPreviewTransform()
         updateDreamyPreviewOverlay()
+        updateOverlayPreview()
         updateTextPreview(force = false)
 
         currentProject?.position = position
