@@ -496,6 +496,7 @@ class MainActivity : AppCompatActivity() {
                 if (isCreatingProject) {
 
                     // Project baru dimulai tanpa audio clip lama.
+                    clearOverlayVideoPreviewPlayers()
                     audioClipManager.clear()
                     textClipManager.clips.clear()
                     effectClipManager.clips.clear()
@@ -983,6 +984,7 @@ class MainActivity : AppCompatActivity() {
         currentProject = project
 
         // Bersihkan state project sebelumnya sebelum memuat seluruh layer project ini.
+        clearOverlayVideoPreviewPlayers()
         audioClipManager.clear()
         textClipManager.clips.clear()
         effectClipManager.clips.clear()
@@ -6323,6 +6325,13 @@ class MainActivity : AppCompatActivity() {
 
     private var lastPreviewTextStateKey: Long = Long.MIN_VALUE
 
+    private fun clearOverlayVideoPreviewPlayers() {
+        overlayVideoPreviewPlayers.values.forEach { it.release() }
+        overlayVideoPreviewPlayers.clear()
+        overlayVideoPreviewViews.values.forEach(overlayVideoPreviewContainer::removeView)
+        overlayVideoPreviewViews.clear()
+    }
+
     /** Sinkronkan pemutar video overlay ke posisi main timeline. */
     private fun updateOverlayVideoPreview() {
         if (!::overlayVideoPreviewContainer.isInitialized || !::player.isInitialized) return
@@ -7810,10 +7819,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
-
         saveCurrentProject()
-
+        overlayVideoPreviewPlayers.values.forEach { it.pause() }
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        clearOverlayVideoPreviewPlayers()
+        overlayPreviewExecutor.shutdown()
+        super.onDestroy()
     }
 
     // =====================================
