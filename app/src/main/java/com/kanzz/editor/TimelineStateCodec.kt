@@ -239,7 +239,7 @@ object TimelineStateCodec {
                         restored.addClip(clip)
                     }
                 } else {
-                    manager.addClip(clip)
+                    restored.addClip(clip)
                 }
             }
             manager.clear()
