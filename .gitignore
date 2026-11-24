@@ -1,0 +1,21 @@
+# Gradle / Android
+.gradle/
+**/build/
+local.properties
+*.iml
+.idea/
+
+# Signing material
+*.jks
+*.keystore
+keystore.properties
+
+# Generated/model artifacts
+*.onnx
+*.tflite
+*.pt
+*.engine
+
+# OS/editor
+.DS_Store
+Thumbs.db
