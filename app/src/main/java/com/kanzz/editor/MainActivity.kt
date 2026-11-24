@@ -6013,13 +6013,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun restoreEffectClips(json: String?) {
-        effectClipManager.clips.clear()
-        if (json.isNullOrBlank()) return
-        runCatching {
+        if (json.isNullOrBlank()) {
+            effectClipManager.clips.clear()
+            return
+        }
+
+        // Gunakan manager sementara agar restore gagal bersifat atomik.
+        val restored = EffectClipManager()
+        try {
             val array = JSONArray(json)
             for (i in 0 until array.length()) {
                 val item = array.getJSONObject(i)
-                effectClipManager.clips.add(EffectClip(
+                restored.clips.add(EffectClip(
                     id = item.optString("id"), effectName = item.optString("effectName", "Dreamy"),
                     startTimeMs = item.optLong("startTimeMs"), durationMs = item.optLong("durationMs", 2000L),
                     trackIndex = item.optInt("trackIndex", 0), opacity = item.optDouble("opacity", 1.0).toFloat(),
@@ -6029,8 +6034,13 @@ class MainActivity : AppCompatActivity() {
                     softFocus = item.optDouble("softFocus", 0.35).toFloat()
                 ))
             }
-            effectClipManager.compactLanes()
-        }.onFailure { effectClipManager.clips.clear() }
+            restored.compactLanes()
+        } catch (_: Exception) {
+            return
+        }
+
+        effectClipManager.clips.clear()
+        effectClipManager.clips.addAll(restored.clips)
     }
 
     private fun encodeTextAndEffects(): String = JSONObject()
@@ -6050,13 +6060,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun restoreTextClips(json: String?) {
-        textClipManager.clips.clear()
-        if (json.isNullOrBlank()) return
-        runCatching {
+        if (json.isNullOrBlank()) {
+            textClipManager.clips.clear()
+            return
+        }
+
+        // Pulihkan ke manager sementara. JSON rusak tidak boleh menghapus
+        // layer teks yang saat ini masih valid.
+        val restored = TextClipManager()
+        try {
             val array = JSONArray(json)
             for (i in 0 until array.length()) {
                 val item = array.getJSONObject(i)
-                val clip = TextClip(
+                restored.clips.add(TextClip(
                     id = item.optString("id"), text = item.optString("text"),
                     startTimeMs = item.optLong("startTimeMs"),
                     durationMs = item.optLong("durationMs", 2000L),
@@ -6069,11 +6085,15 @@ class MainActivity : AppCompatActivity() {
                     color = item.optInt("color", Color.WHITE),
                     opacity = item.optDouble("opacity", 1.0).toFloat(),
                     bold = item.optBoolean("bold", true)
-                )
-                textClipManager.clips.add(clip)
+                ))
             }
-            textClipManager.compactLanes()
-        }.onFailure { textClipManager.clips.clear() }
+            restored.compactLanes()
+        } catch (_: Exception) {
+            return
+        }
+
+        textClipManager.clips.clear()
+        textClipManager.clips.addAll(restored.clips)
     }
 
     private fun refreshAudioTracks() {
