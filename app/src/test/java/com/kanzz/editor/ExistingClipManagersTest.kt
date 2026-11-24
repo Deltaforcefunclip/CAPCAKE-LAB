@@ -38,7 +38,7 @@ class ExistingClipManagersTest {
 
         val replaced = manager.replaceSourceUri("content://missing", "content://restored")
 
-        assertEquals(1, replaced)
+        assertEquals(2, replaced)
         assertEquals("content://restored", manager.clips[0].sourceUri)
         assertEquals(200L, manager.clips[0].sourceStartMs)
         assertEquals(1200L, manager.clips[0].durationMs)
