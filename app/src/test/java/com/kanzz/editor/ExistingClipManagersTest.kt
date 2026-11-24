@@ -19,6 +19,30 @@ class ExistingClipManagersTest {
         speed = speed
     )
 
+    @Test fun replacingMissingSourceUriPreservesAllClipEditsAndOnlyChangesMatchingClips() {
+        val manager = managerWith(
+            video("first", 1200L, 0.5f).copy(
+                sourceUri = "content://missing",
+                sourceStartMs = 200L,
+                brightness = 0.4f,
+                transformScale = 1.8f
+            ),
+            video("other", 800L).copy(sourceUri = "content://other")
+        )
+
+        val replaced = manager.replaceSourceUri("content://missing", "content://restored")
+
+        assertEquals(1, replaced)
+        assertEquals("content://restored", manager.clips[0].sourceUri)
+        assertEquals(200L, manager.clips[0].sourceStartMs)
+        assertEquals(1200L, manager.clips[0].durationMs)
+        assertEquals(0.5f, manager.clips[0].speed)
+        assertEquals(0.4f, manager.clips[0].brightness)
+        assertEquals(1.8f, manager.clips[0].transformScale)
+        assertEquals("content://other", manager.clips[1].sourceUri)
+        assertEquals(0, manager.replaceSourceUri("content://missing", "content://new"))
+    }
+
     @Test fun splitUsesTimelineTimeAndPreservesSourceContinuityAtHalfSpeed() {
         val manager = managerWith(video("source", 2000L, 0.5f))
 
