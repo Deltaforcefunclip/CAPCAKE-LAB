@@ -2255,6 +2255,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 selectedVideoClipId = tappedClip?.id
+                selectedOverlayClipId = null
                 videoSelected = tappedClip != null
 
                 // Pemilihan klip menjalankan ripple navigation: viewport dan
@@ -2691,6 +2692,7 @@ class MainActivity : AppCompatActivity() {
 
         playerView.setOnClickListener {
             selectedAudioClipId = null
+            selectedOverlayClipId = null
             clearAudioTrackSelection()
             selectedVideoClipId = activeVideoClip()?.id
             videoSelected = selectedVideoClipId != null
@@ -3584,6 +3586,7 @@ class MainActivity : AppCompatActivity() {
                     "Effect" -> {
                         val switchingGroup = activeLayerGroup != "EFFECT"
                         activeLayerGroup = "EFFECT"
+                        selectedOverlayClipId = null
                         selectedAudioClipId = null
                         selectedTextClipId = null
                         selectedEffectClipId = null
@@ -3600,6 +3603,7 @@ class MainActivity : AppCompatActivity() {
                     "Audio" -> {
                         val switchingGroup = activeLayerGroup != "AUDIO"
                         activeLayerGroup = "AUDIO"
+                        selectedOverlayClipId = null
                         selectedTextClipId = null
                         selectedEffectClipId = null
                         selectedAudioClipId = null
@@ -3615,6 +3619,7 @@ class MainActivity : AppCompatActivity() {
                     "Text" -> {
                         val switchingGroup = activeLayerGroup != "TEXT"
                         activeLayerGroup = "TEXT"
+                        selectedOverlayClipId = null
                         selectedAudioClipId = null
                         selectedTextClipId = null
                         selectedEffectClipId = null
@@ -3629,6 +3634,8 @@ class MainActivity : AppCompatActivity() {
 
                     "Overlay", "Sticker" -> {
                         activeLayerGroup = if (pair.second == "Overlay") "OVERLAY" else "STICKER"
+                        selectedVideoClipId = null
+                        videoSelected = false
                         selectedAudioClipId = null
                         selectedTextClipId = null
                         selectedEffectClipId = null
