@@ -529,6 +529,11 @@ class MainActivity : AppCompatActivity() {
                 saveProjects()
                 openEditor()
                 loadVideo(uri)
+            } else if (isCreatingProject) {
+                // Pengguna membatalkan pemilihan sumber: jangan biarkan status
+                // pembuatan project tertinggal untuk aksi berikutnya.
+                isCreatingProject = false
+                showMessage("Pembuatan project dibatalkan.")
             }
         }
 
