@@ -144,6 +144,9 @@ class MainActivity : AppCompatActivity() {
     private val overlayClipManager = OverlayClipManager()
     private var selectedOverlayClipId: String? = null
     private lateinit var overlayPreviewImageView: ImageView
+    private lateinit var overlayVideoPreviewContainer: FrameLayout
+    private val overlayVideoPreviewPlayers = mutableMapOf<String, ExoPlayer>()
+    private val overlayVideoPreviewViews = mutableMapOf<String, PlayerView>()
     private val overlayPreviewExecutor = Executors.newSingleThreadExecutor()
     private var overlayPreviewGeneration = 0
     private var lastOverlayPreviewClipId: String? = null
@@ -1639,6 +1642,14 @@ class MainActivity : AppCompatActivity() {
         previewFrame.addView(
             overlayPreviewImageView,
             FrameLayout.LayoutParams(dp(180), dp(180), Gravity.CENTER)
+        )
+        overlayVideoPreviewContainer = FrameLayout(this).apply {
+            isClickable = false
+            isFocusable = false
+        }
+        previewFrame.addView(
+            overlayVideoPreviewContainer,
+            FrameLayout.LayoutParams(-1, -1)
         )
 
         dreamyPreviewOverlay = View(this).apply {
@@ -3883,6 +3894,7 @@ class MainActivity : AppCompatActivity() {
         refreshOverlayTracks()
         saveCurrentProject()
         updateOverlayPreview()
+        updateOverlayVideoPreview()
         updateToolMenu()
         showMessage(if (type == OverlayClip.Type.VIDEO) "Video overlay ditambahkan ke timeline." else "Gambar overlay ditambahkan ke timeline.")
     }
@@ -6304,6 +6316,80 @@ class MainActivity : AppCompatActivity() {
 
     private var lastPreviewTextStateKey: Long = Long.MIN_VALUE
 
+    /** Sinkronkan pemutar video overlay ke posisi main timeline. */
+    private fun updateOverlayVideoPreview() {
+        if (!::overlayVideoPreviewContainer.isInitialized || !::player.isInitialized) return
+        val position = currentTimelinePosition()
+        val active = overlayClipManager.clips.filter {
+            it.mediaType == OverlayClip.Type.VIDEO &&
+                position >= it.startTimeMs && position < it.endTimeMs
+        }
+        val activeIds = active.map { it.id }.toSet()
+        val staleIds = overlayVideoPreviewPlayers.keys.filter { it !in activeIds }
+        staleIds.forEach { id ->
+            overlayVideoPreviewPlayers.remove(id)?.release()
+            overlayVideoPreviewViews.remove(id)?.let(overlayVideoPreviewContainer::removeView)
+        }
+
+        active.forEach { clip ->
+            var overlayPlayer = overlayVideoPreviewPlayers[clip.id]
+            var overlayView = overlayVideoPreviewViews[clip.id]
+            if (overlayPlayer == null || overlayView == null) {
+                overlayPlayer?.release()
+                overlayView?.let(overlayVideoPreviewContainer::removeView)
+                overlayPlayer = ExoPlayer.Builder(this).build().apply {
+                    volume = 0f
+                    val item = MediaItem.Builder()
+                        .setUri(Uri.parse(clip.sourceUri))
+                        .setClippingConfiguration(
+                            MediaItem.ClippingConfiguration.Builder()
+                                .setStartPositionMs(clip.sourceStartMs.coerceAtLeast(0L))
+                                .setEndPositionMs(
+                                    (clip.sourceStartMs + clip.sourceDurationMs)
+                                        .coerceAtLeast(clip.sourceStartMs + 1L)
+                                )
+                                .build()
+                        )
+                        .build()
+                    setMediaItem(item)
+                    prepare()
+                }
+                overlayView = (android.view.LayoutInflater.from(this)
+                    .inflate(R.layout.preview_player_view, overlayVideoPreviewContainer, false) as PlayerView).apply {
+                    useController = false
+                    resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    setBackgroundColor(Color.TRANSPARENT)
+                    setShutterBackgroundColor(Color.TRANSPARENT)
+                    setKeepContentOnPlayerReset(true)
+                    player = overlayPlayer
+                }
+                overlayVideoPreviewContainer.addView(
+                    overlayView,
+                    FrameLayout.LayoutParams(-1, -1)
+                )
+                overlayVideoPreviewPlayers[clip.id] = overlayPlayer
+                overlayVideoPreviewViews[clip.id] = overlayView
+            }
+
+            val localPosition = (position - clip.startTimeMs).coerceIn(0L, clip.durationMs)
+            val drift = abs(overlayPlayer.currentPosition - localPosition)
+            val seekThreshold = if (player.isPlaying) 350L else 45L
+            if (overlayPlayer.playbackState == Player.STATE_IDLE ||
+                overlayPlayer.playbackState == Player.STATE_ENDED ||
+                drift > seekThreshold
+            ) {
+                overlayPlayer.seekTo(localPosition)
+            }
+            overlayPlayer.playWhenReady = player.isPlaying
+            overlayView.alpha = clip.opacity.coerceIn(0f, 1f)
+            overlayView.scaleX = (0.5f * clip.scale).coerceIn(0.025f, 5f)
+            overlayView.scaleY = (0.5f * clip.scale).coerceIn(0.025f, 5f)
+            overlayView.rotation = clip.rotation
+            overlayView.translationX = clip.positionX
+            overlayView.translationY = clip.positionY
+        }
+    }
+
     /** Preview image overlay teratas mengikuti playhead project. */
     private fun updateOverlayPreview() {
         if (!::overlayPreviewImageView.isInitialized) return
@@ -7762,6 +7848,7 @@ class MainActivity : AppCompatActivity() {
         applyPreviewTransform()
         updateDreamyPreviewOverlay()
         updateOverlayPreview()
+        updateOverlayVideoPreview()
         updateTextPreview(force = false)
 
         currentProject?.position = position
