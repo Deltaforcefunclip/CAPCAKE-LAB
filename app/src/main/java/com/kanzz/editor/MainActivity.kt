@@ -5280,7 +5280,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             fontPickerPanel.visibility = View.GONE
-        if (::presetTextPanel.isInitialized) presetTextPanel.visibility = View.GONE
+            if (::presetTextPanel.isInitialized) presetTextPanel.visibility = View.GONE
             fontPickerClipId = null
             fontPickerOriginalFont = null
         }
