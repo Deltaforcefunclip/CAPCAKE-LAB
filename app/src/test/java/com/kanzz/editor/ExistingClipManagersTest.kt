@@ -27,7 +27,11 @@ class ExistingClipManagersTest {
                 brightness = 0.4f,
                 transformScale = 1.8f
             ),
-            video("other", 800L).copy(sourceUri = "content://other")
+            video("other", 800L).copy(sourceUri = "content://other"),
+            video("second-segment", 600L).copy(
+                sourceUri = "content://missing",
+                sourceStartMs = 1400L
+            )
         )
 
         assertTrue(manager.setTransition("first", "other", VideoTransition.Type.FADE, 300L))
@@ -42,6 +46,8 @@ class ExistingClipManagersTest {
         assertEquals(0.4f, manager.clips[0].brightness)
         assertEquals(1.8f, manager.clips[0].transformScale)
         assertEquals("content://other", manager.clips[1].sourceUri)
+        assertEquals("content://restored", manager.clips[2].sourceUri)
+        assertEquals(1400L, manager.clips[2].sourceStartMs)
         assertEquals(VideoTransition.Type.FADE, manager.transitionBetween("first", "other")?.type)
         assertEquals(300L, manager.transitionBetween("first", "other")?.durationMs)
         assertEquals(0, manager.replaceSourceUri("content://missing", "content://new"))
