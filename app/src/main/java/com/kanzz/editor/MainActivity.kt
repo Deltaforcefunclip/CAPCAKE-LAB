@@ -954,7 +954,9 @@ class MainActivity : AppCompatActivity() {
 
             val uri = Uri.parse(project.uri)
 
-            contentResolver.openFileDescriptor(uri, "r")?.close()
+            val descriptor = contentResolver.openFileDescriptor(uri, "r")
+                ?: throw IllegalStateException("File video tidak tersedia")
+            descriptor.use { }
 
             videoUri = uri
             muteAudio = project.muted
