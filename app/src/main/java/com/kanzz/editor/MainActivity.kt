@@ -7378,7 +7378,7 @@ class MainActivity : AppCompatActivity() {
 
         // onPause() tetap menjadi penyimpanan utama. Penyimpanan berkala ini
         // mengurangi kehilangan posisi jika proses aplikasi dihentikan mendadak.
-        if (currentProject != null) {
+        if (player.isPlaying && currentProject != null) {
             val now = SystemClock.elapsedRealtime()
             if (now - lastPlaybackPositionSaveElapsedMs >= 5_000L) {
                 lastPlaybackPositionSaveElapsedMs = now
