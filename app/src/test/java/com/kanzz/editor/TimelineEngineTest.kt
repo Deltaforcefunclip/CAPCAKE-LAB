@@ -144,4 +144,13 @@ class TimelineEngineTest {
         assertEquals("audio-1", manager.lanes.single().clips.single().id)
     }
 
+    @Test fun movingMainTrackClipChangesOrderWithoutCreatingGaps() {
+        val state = TimelineState(clips = listOf(
+            clip("a", 0, 500), clip("b", 500, 700), clip("c", 1200, 300)
+        ))
+        val result = MoveClipCommand("c", 0, 0).apply(state)
+        assertEquals(listOf("c", "a", "b"), result.clips.filter { it.trackIndex == 0 }.map { it.id })
+        assertEquals(listOf(0L, 300L, 800L), result.clips.filter { it.trackIndex == 0 }.map { it.startTime })
+    }
+
 }
