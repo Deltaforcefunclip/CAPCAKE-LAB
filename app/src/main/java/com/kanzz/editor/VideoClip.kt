@@ -164,6 +164,23 @@ class VideoClipManager {
     fun find(clipId: String?): VideoClip? =
         clips.firstOrNull { it.id == clipId }
 
+    /**
+     * Ganti URI sumber untuk seluruh segmen yang memakai file lama.
+     * Salinan clip mempertahankan ID, trim, speed, filter, transform, dan grading.
+     */
+    fun replaceSourceUri(oldUri: String, newUri: String): Int {
+        if (oldUri == newUri) return 0
+        var replaced = 0
+        clips.indices.forEach { index ->
+            val clip = clips[index]
+            if (clip.sourceUri == oldUri) {
+                clips[index] = clip.copy(sourceUri = newUri)
+                replaced++
+            }
+        }
+        return replaced
+    }
+
     fun split(clipId: String?, playheadMs: Long): VideoClip? {
         val index = clips.indexOfFirst { clip ->
             clip.id == clipId &&
