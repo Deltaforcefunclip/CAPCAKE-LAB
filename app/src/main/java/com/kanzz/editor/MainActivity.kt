@@ -14,6 +14,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import android.util.Size
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.view.Gravity
@@ -34,6 +35,8 @@ import androidx.media3.common.audio.SpeedProvider
 import androidx.media3.common.audio.ChannelMixingMatrix
 import androidx.media3.common.C
 import androidx.media3.common.Player
+import androidx.media3.common.OverlaySettings
+import androidx.media3.common.VideoCompositorSettings
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.ExperimentalApi
 import androidx.media3.exoplayer.SeekParameters
@@ -56,6 +59,7 @@ import androidx.media3.effect.Crop
 import androidx.media3.effect.FrameDropEffect
 import androidx.media3.effect.CanvasOverlay
 import androidx.media3.effect.OverlayEffect
+import androidx.media3.effect.StaticOverlaySettings
 import androidx.media3.effect.RgbMatrix
 import androidx.media3.transformer.Effects
 import org.json.JSONArray
@@ -8629,6 +8633,45 @@ class MainActivity : AppCompatActivity() {
             val sequences = mutableListOf<EditedMediaItemSequence>()
             sequences.add(EditedMediaItemSequence.withAudioAndVideoFrom(editedItems))
 
+            // Setiap lane video overlay menjadi sequence video terpisah. Gap di awal
+            // dan antar-klip menjaga posisi absolut klip pada timeline project.
+            val overlaySequenceClips = mutableMapOf<Int, List<OverlayClip>>()
+            overlayClipManager.clips
+                .filter { it.mediaType == OverlayClip.Type.VIDEO }
+                .groupBy { it.trackIndex }
+                .toSortedMap()
+                .values
+                .forEach { laneClips ->
+                    val ordered = laneClips.sortedBy { it.startTimeMs }
+                    val sequenceBuilder = EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_VIDEO))
+                    var cursorMs = 0L
+                    ordered.forEach { overlay ->
+                        if (overlay.startTimeMs > cursorMs) {
+                            sequenceBuilder.addGap((overlay.startTimeMs - cursorMs) * 1000L)
+                        }
+                        val overlayMediaItem = MediaItem.Builder()
+                            .setUri(Uri.parse(overlay.sourceUri))
+                            .setClippingConfiguration(
+                                MediaItem.ClippingConfiguration.Builder()
+                                    .setStartPositionMs(overlay.sourceStartMs.coerceAtLeast(0L))
+                                    .setEndPositionMs(
+                                        (overlay.sourceStartMs + overlay.sourceDurationMs)
+                                            .coerceAtLeast(overlay.sourceStartMs + 1L)
+                                    )
+                                    .build()
+                            )
+                            .build()
+                        val overlayEditedItem = EditedMediaItem.Builder(overlayMediaItem)
+                            .setRemoveAudio(true)
+                            .build()
+                        sequenceBuilder.addItem(overlayEditedItem)
+                        cursorMs = overlay.endTimeMs
+                    }
+                    val inputId = sequences.size
+                    sequences.add(sequenceBuilder.build())
+                    overlaySequenceClips[inputId] = ordered
+                }
+
             // Setiap layer audio menjadi sequence terpisah agar beberapa layer dapat
             // bercampur bersamaan, sementara addGap menjaga posisi klip di timeline.
             audioClipManager.lanes.forEach { lane ->
@@ -8685,7 +8728,35 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            val composition = Composition.Builder(sequences).build()
+            val frameWidth = playerView.width.coerceAtLeast(1).toFloat()
+            val frameHeight = playerView.height.coerceAtLeast(1).toFloat()
+            val compositorSettings = object : VideoCompositorSettings {
+                override fun getOutputSize(inputSizes: MutableList<Size>): Size =
+                    inputSizes.firstOrNull() ?: Size(1280, 720)
+
+                override fun getOverlaySettings(inputId: Int, presentationTimeUs: Long): OverlaySettings {
+                    val overlayClip = overlaySequenceClips[inputId]
+                        ?.firstOrNull { presentationTimeUs / 1000L in it.startTimeMs until it.endTimeMs }
+                    if (overlayClip == null) {
+                        return StaticOverlaySettings.Builder()
+                            .setAlphaScale(if (inputId == 0) 1f else 0f)
+                            .build()
+                    }
+                    val normalizedX = (overlayClip.positionX * 2f / frameWidth).coerceIn(-2f, 2f)
+                    val normalizedY = (-overlayClip.positionY * 2f / frameHeight).coerceIn(-2f, 2f)
+                    val overlayScale = (0.5f * overlayClip.scale).coerceIn(0.025f, 5f)
+                    return StaticOverlaySettings.Builder()
+                        .setAlphaScale(overlayClip.opacity.coerceIn(0f, 1f))
+                        .setScale(overlayScale, overlayScale)
+                        .setOverlayFrameAnchor(0f, 0f)
+                        .setBackgroundFrameAnchor(normalizedX, normalizedY)
+                        .setRotationDegrees(overlayClip.rotation)
+                        .build()
+                }
+            }
+            val composition = Composition.Builder(sequences)
+                .setVideoCompositorSettings(compositorSettings)
+                .build()
             // Encode portrait frames in portrait dimensions instead of relying
             // only on a 90-degree rotation flag in MP4 metadata.
             val transformer = Transformer.Builder(this)
