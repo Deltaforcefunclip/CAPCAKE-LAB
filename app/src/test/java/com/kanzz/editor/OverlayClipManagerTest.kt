@@ -1,0 +1,134 @@
+package com.kanzz.editor
+
+import org.junit.Assert.*
+import org.junit.Test
+
+class OverlayClipManagerTest {
+    private fun overlay(
+        id: String,
+        start: Long,
+        duration: Long,
+        lane: Int = 0,
+        type: OverlayClip.Type = OverlayClip.Type.VIDEO,
+        sourceDuration: Long = duration
+    ) = OverlayClip(
+        id = id,
+        sourceUri = "content://$id",
+        mediaType = type,
+        startTimeMs = start,
+        durationMs = duration,
+        sourceDurationMs = sourceDuration,
+        trackIndex = lane
+    )
+
+    @Test fun addAssignsFirstAvailableNonOverlappingLaneAndClampsValues() {
+        val manager = OverlayClipManager()
+        val first = overlay("a", 0L, 1000L)
+        val overlap = overlay("b", 500L, 1000L)
+        val separate = overlay("c", 1000L, 500L)
+
+        manager.add(first)
+        manager.add(overlap)
+        manager.add(separate)
+
+        assertEquals(0, first.trackIndex)
+        assertEquals(1, overlap.trackIndex)
+        assertEquals(0, separate.trackIndex)
+        assertEquals(listOf("a", "c", "b"), manager.clips.map { it.id })
+    }
+
+    @Test fun moveRejectsCollisionAndPreservesOriginalPosition() {
+        val manager = OverlayClipManager()
+        val first = overlay("a", 0L, 1000L)
+        val second = overlay("b", 1500L, 1000L)
+        manager.add(first)
+        manager.add(second)
+
+        assertFalse(manager.moveClip("b", 500L, 0))
+        assertEquals(1500L, second.startTimeMs)
+        assertEquals(0, second.trackIndex)
+        assertTrue(manager.moveClip("b", 500L, 1))
+        assertEquals(500L, second.startTimeMs)
+        assertEquals(1, second.trackIndex)
+    }
+
+    @Test fun moveToLaneRejectsInvalidLaneAndCollision() {
+        val manager = OverlayClipManager()
+        val first = overlay("a", 0L, 1000L)
+        val second = overlay("b", 500L, 500L)
+        manager.add(first)
+        manager.add(second)
+
+        assertFalse(manager.moveClipToLane("b", -1))
+        assertFalse(manager.moveClipToLane("b", 0))
+        assertTrue(manager.moveClipToLane("b", 2))
+        assertEquals(2, second.trackIndex)
+    }
+
+    @Test fun splitVideoPreservesSourceContinuityAndTimelineRange() {
+        val manager = OverlayClipManager()
+        val clip = overlay("video", 1000L, 2000L, sourceDuration = 2000L)
+        manager.add(clip)
+
+        val second = manager.split("video", 1750L)
+
+        assertNotNull(second)
+        assertEquals(750L, clip.durationMs)
+        assertEquals(1250L, second!!.durationMs)
+        assertEquals(750L, clip.sourceDurationMs)
+        assertEquals(750L, second.sourceStartMs)
+        assertEquals(1250L, second.sourceDurationMs)
+        assertEquals(1750L, second.startTimeMs)
+    }
+
+    @Test fun splitImageKeepsSameSourceAndRejectsBoundaries() {
+        val manager = OverlayClipManager()
+        val clip = overlay("image", 200L, 1000L, type = OverlayClip.Type.IMAGE)
+
+        manager.add(clip)
+        assertNull(manager.split("image", 200L))
+        assertNull(manager.split("image", 1200L))
+        val second = manager.split("image", 700L)
+
+        assertNotNull(second)
+        assertEquals(0L, second!!.sourceStartMs)
+        assertEquals(1000L, second.sourceDurationMs)
+        assertEquals(500L, clip.durationMs)
+    }
+
+    @Test fun trimRejectsInvalidRangeAndCollisionWithoutMutatingClip() {
+        val manager = OverlayClipManager()
+        val first = overlay("a", 0L, 1000L)
+        val second = overlay("b", 1500L, 500L)
+        manager.add(first)
+        manager.add(second)
+
+        assertFalse(manager.trim("b", 500L, 1000L))
+        assertEquals(1500L, second.startTimeMs)
+        assertEquals(500L, second.durationMs)
+        assertFalse(manager.trim("b", -1L, 100L))
+        assertTrue(manager.trim("b", 1000L, 500L))
+    }
+
+    @Test fun removeCompactsLanesAndUnknownIdsAreSafe() {
+        val manager = OverlayClipManager()
+        val first = overlay("a", 0L, 500L, lane = 0)
+        val second = overlay("b", 0L, 500L, lane = 1)
+        val third = overlay("c", 0L, 500L, lane = 2)
+        manager.clips.addAll(listOf(first, second, third))
+
+        assertTrue(manager.remove("b"))
+        assertEquals(listOf(0, 1), manager.clips.map { it.trackIndex }.distinct().sorted())
+        assertFalse(manager.remove("missing"))
+    }
+
+    @Test fun newBottomLaneMovesClipWithoutChangingTime() {
+        val manager = OverlayClipManager()
+        val clip = overlay("a", 350L, 700L)
+        manager.add(clip)
+
+        assertTrue(manager.moveClipToNewBottomLane("a"))
+        assertEquals(350L, clip.startTimeMs)
+        assertEquals(0, clip.trackIndex)
+    }
+}
