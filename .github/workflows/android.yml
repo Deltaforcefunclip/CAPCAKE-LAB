@@ -34,7 +34,21 @@ jobs:
       - name: Run unit tests
         run: gradle testDebugUnitTest
       - name: Run Android lint
+        id: lint
+        continue-on-error: true
         run: gradle lintDebug
+      - name: Print lint report
+        if: always()
+        run: |
+          REPORT="app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt"
+          if [ -f "$REPORT" ]; then cat "$REPORT"; else echo "Lint report not generated"; fi
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capcake-lint-report
+          path: app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
+          if-no-files-found: warn
       - name: Build debug APK
         run: gradle assembleDebug
       - name: Upload APK
@@ -43,3 +57,6 @@ jobs:
           name: capcake-lab-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+      - name: Fail if lint reported errors
+        if: steps.lint.outcome == 'failure'
+        run: exit 1
