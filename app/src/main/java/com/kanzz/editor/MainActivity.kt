@@ -8390,7 +8390,7 @@ class MainActivity : AppCompatActivity() {
                                         rotation = text.rotation
                                     )
                                 }
-                                if (exportTextSnapshot.isNotEmpty()) {
+                                if (exportTextSnapshot.isNotEmpty() || exportImageOverlays.isNotEmpty()) {
                                     val videoClip = clip
                                     val previewW = fontPickerAnchorView.width.coerceAtLeast(1).toFloat()
                                     val previewH = fontPickerAnchorView.height.coerceAtLeast(1).toFloat()
