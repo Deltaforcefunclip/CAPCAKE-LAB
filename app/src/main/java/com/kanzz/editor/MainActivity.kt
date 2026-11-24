@@ -106,7 +106,8 @@ data class VideoProject(
     var muted: Boolean = false
 )
 
-@OptIn(UnstableApi::class, ExperimentalApi::class)
+@UnstableApi
+@OptIn(ExperimentalApi::class)
 class MainActivity : AppCompatActivity() {
 
     private val bg = Color.rgb(16, 16, 16)
