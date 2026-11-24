@@ -3271,6 +3271,8 @@ class MainActivity : AppCompatActivity() {
 
         val names = if (selectedEffectClipId != null) {
             listOf("⚙" to "Atur", "◐" to "Opasitas", "✂" to "Potong", "▣" to "Duplikat", "⌫" to "Hapus")
+        } else if (selectedOverlayClipId != null) {
+            listOf("⚙" to "Atur", "◐" to "Opasitas", "✂" to "Potong", "▣" to "Duplikat", "⌫" to "Hapus")
         } else if (selectedTextClipId != null) {
             listOf(
                 "✎" to "Edit Text", "Aa" to "Font", "▣" to "Salin",
@@ -3370,6 +3372,21 @@ class MainActivity : AppCompatActivity() {
                             else { undoStack.removeLastOrNull(); Toast.makeText(this, "Geser playhead ke dalam clip Effect untuk memotong.", Toast.LENGTH_SHORT).show() }
                             return@setOnClickListener
                         }
+                        if (selectedOverlayClipId != null) {
+                            val overlay = overlayClipManager.find(selectedOverlayClipId) ?: return@setOnClickListener
+                            pushUndoSnapshot()
+                            val second = overlayClipManager.split(overlay.id, currentTimelinePosition())
+                            if (second != null) {
+                                selectedOverlayClipId = second.id
+                                refreshOverlayTracks()
+                                saveCurrentProject()
+                                updateToolMenu()
+                            } else {
+                                undoStack.removeLastOrNull()
+                                showMessage("Geser playhead ke dalam klip Overlay untuk memotong.")
+                            }
+                            return@setOnClickListener
+                        }
                         if (selectedTextClipId != null) {
                             splitSelectedText()
                             return@setOnClickListener
@@ -3402,9 +3419,13 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     "Atur" -> {
-                        effectClipManager.find(selectedEffectClipId)?.let { clip ->
-                            if (clip.effectName == "Dreamy" || clip.effectName == "Cahaya Lembut") showEffectPanel()
-                            else showMessage("Pengaturan ${clip.effectName} belum tersedia.")
+                        if (selectedOverlayClipId != null) {
+                            overlayClipManager.find(selectedOverlayClipId)?.let { showOverlayTransformDialog(it) }
+                        } else {
+                            effectClipManager.find(selectedEffectClipId)?.let { clip ->
+                                if (clip.effectName == "Dreamy" || clip.effectName == "Cahaya Lembut") showEffectPanel()
+                                else showMessage("Pengaturan ${clip.effectName} belum tersedia.")
+                            }
                         }
                     }
                     "Edit Text" -> editSelectedText()
@@ -3415,11 +3436,21 @@ class MainActivity : AppCompatActivity() {
                     "Gaya" -> toggleSelectedTextStyle()
                     "Animasi" -> Toast.makeText(this, "Pengaturan animasi teks akan ditambahkan berikutnya.", Toast.LENGTH_SHORT).show()
                     "Opasitas" -> {
-                        if (selectedEffectClipId != null) effectClipManager.find(selectedEffectClipId)?.let { showEffectOpacityDialog(it) }
-                        else showTextOpacityDialog()
+                        if (selectedOverlayClipId != null) {
+                            overlayClipManager.find(selectedOverlayClipId)?.let { showOverlayOpacityDialog(it) }
+                        } else if (selectedEffectClipId != null) {
+                            effectClipManager.find(selectedEffectClipId)?.let { showEffectOpacityDialog(it) }
+                        } else showTextOpacityDialog()
                     }
                     "Hapus" -> {
-                        if (selectedEffectClipId != null) {
+                        if (selectedOverlayClipId != null) {
+                            pushUndoSnapshot()
+                            overlayClipManager.remove(selectedOverlayClipId)
+                            selectedOverlayClipId = null
+                            refreshOverlayTracks()
+                            saveCurrentProject()
+                            updateToolMenu()
+                        } else if (selectedEffectClipId != null) {
                             pushUndoSnapshot()
                             effectClipManager.remove(selectedEffectClipId)
                             selectedEffectClipId = null
@@ -3464,6 +3495,20 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     "Duplikat" -> {
+                        if (selectedOverlayClipId != null) {
+                            val original = overlayClipManager.find(selectedOverlayClipId) ?: return@setOnClickListener
+                            pushUndoSnapshot()
+                            val copy = original.copy(
+                                id = java.util.UUID.randomUUID().toString(),
+                                startTimeMs = original.endTimeMs
+                            )
+                            overlayClipManager.add(copy)
+                            selectedOverlayClipId = copy.id
+                            refreshOverlayTracks()
+                            saveCurrentProject()
+                            updateToolMenu()
+                            return@setOnClickListener
+                        }
                         if (selectedEffectClipId != null) {
                             val originalEffect = effectClipManager.find(selectedEffectClipId) ?: return@setOnClickListener
                             pushUndoSnapshot()
@@ -3867,6 +3912,94 @@ class MainActivity : AppCompatActivity() {
             root.translationY = root.height.toFloat().coerceAtLeast(dp(220).toFloat())
             root.animate().translationY(0f).setDuration(260L).setInterpolator(DecelerateInterpolator()).start()
         }
+    }
+
+    private fun showOverlayOpacityDialog(clip: OverlayClip) {
+        val original = clip.opacity
+        val seek = SeekBar(this).apply {
+            max = 100
+            progress = (original * 100f).toInt().coerceIn(0, 100)
+        }
+        val label = TextView(this).apply {
+            text = "Opasitas ${seek.progress}%"
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+        }
+        seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(bar: SeekBar?, value: Int, fromUser: Boolean) {
+                label.text = "Opasitas $value%"
+                clip.opacity = value / 100f
+            }
+            override fun onStartTrackingTouch(bar: SeekBar?) {}
+            override fun onStopTrackingTouch(bar: SeekBar?) {}
+        })
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(12), dp(20), dp(8))
+            addView(label)
+            addView(seek)
+        }
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Opasitas Overlay")
+            .setView(box)
+            .setNegativeButton("Batal") { _, _ ->
+                clip.opacity = original
+                refreshOverlayTracks()
+            }
+            .setPositiveButton("Simpan") { _, _ ->
+                pushUndoSnapshot()
+                saveCurrentProject()
+                refreshOverlayTracks()
+            }
+            .show()
+    }
+
+    private fun showOverlayTransformDialog(clip: OverlayClip) {
+        val original = listOf(clip.positionX, clip.positionY, clip.scale, clip.rotation)
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(12), dp(20), dp(8))
+        }
+        fun addControl(title: String, initial: Float, min: Float, max: Float, onValue: (Float) -> Unit) {
+            val label = TextView(this).apply {
+                text = "$title: ${"%.2f".format(Locale.US, initial)}"
+                setTextColor(Color.WHITE)
+            }
+            val seek = SeekBar(this).apply {
+                this.max = 200
+                progress = (((initial - min) / (max - min)) * this.max).toInt().coerceIn(0, this.max)
+            }
+            seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(bar: SeekBar?, value: Int, fromUser: Boolean) {
+                    val result = min + (max - min) * value / 200f
+                    label.text = "$title: ${"%.2f".format(Locale.US, result)}"
+                    onValue(result)
+                }
+                override fun onStartTrackingTouch(bar: SeekBar?) {}
+                override fun onStopTrackingTouch(bar: SeekBar?) {}
+            })
+            content.addView(label)
+            content.addView(seek)
+        }
+        addControl("Posisi X", clip.positionX, -1000f, 1000f) { clip.positionX = it }
+        addControl("Posisi Y", clip.positionY, -1000f, 1000f) { clip.positionY = it }
+        addControl("Ukuran", clip.scale, 0.05f, 4f) { clip.scale = it }
+        addControl("Rotasi", clip.rotation, -180f, 180f) { clip.rotation = it }
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Transformasi Overlay")
+            .setView(content)
+            .setNegativeButton("Batal") { _, _ ->
+                clip.positionX = original[0]
+                clip.positionY = original[1]
+                clip.scale = original[2]
+                clip.rotation = original[3]
+            }
+            .setPositiveButton("Simpan") { _, _ ->
+                pushUndoSnapshot()
+                saveCurrentProject()
+                refreshOverlayTracks()
+            }
+            .show()
     }
 
     private fun showEffectOpacityDialog(clip: EffectClip) {
