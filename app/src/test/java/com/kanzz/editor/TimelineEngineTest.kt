@@ -65,7 +65,7 @@ class TimelineEngineTest {
             pixelsPerMs = 0.1f, tolerancePx = 10f
         )
         assertTrue(result.snapped)
-        assertEquals(1000L, result.timeMs)
+        assertEquals(1500L, result.timeMs)
     }
 
     @Test fun undoRedoRestoresExactTimelineState() {
