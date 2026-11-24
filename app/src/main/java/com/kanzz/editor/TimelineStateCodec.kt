@@ -86,15 +86,14 @@ object TimelineStateCodec {
     }
 
     fun restoreVideo(json: String?, manager: VideoClipManager) {
-        manager.clips.clear()
-        manager.transitions.clear()
         if (json.isNullOrBlank()) return
+        val restored = VideoClipManager()
         try {
             val root = JSONObject(json)
             val clips = root.optJSONArray("clips") ?: JSONArray()
             for (i in 0 until clips.length()) {
                 val item = clips.getJSONObject(i)
-                manager.clips.add(VideoClip(
+                restored.clips.add(VideoClip(
                     id = item.optString("id"),
                     sourceUri = item.getString("sourceUri"),
                     sourceStartMs = item.optLong("sourceStartMs"),
@@ -168,7 +167,7 @@ object TimelineStateCodec {
                 val type = runCatching {
                     VideoTransition.Type.valueOf(item.optString("type", "NONE"))
                 }.getOrDefault(VideoTransition.Type.NONE)
-                manager.transitions.add(VideoTransition(
+                restored.transitions.add(VideoTransition(
                     id = item.optString("id"),
                     leftClipId = item.getString("leftClipId"),
                     rightClipId = item.getString("rightClipId"),
@@ -176,10 +175,13 @@ object TimelineStateCodec {
                     durationMs = item.optLong("durationMs", 500L)
                 ))
             }
-            manager.recalculateTimeline()
-        } catch (_: Exception) {
+            restored.recalculateTimeline()
             manager.clips.clear()
+            manager.clips.addAll(restored.clips)
             manager.transitions.clear()
+            manager.transitions.addAll(restored.transitions)
+        } catch (_: Exception) {
+            // Keep the last valid in-memory timeline when persisted data is corrupt.
         }
     }
 
@@ -206,8 +208,8 @@ object TimelineStateCodec {
     }
 
     fun restoreAudio(json: String?, manager: AudioClipManager) {
-        manager.clear()
         if (json.isNullOrBlank()) return
+        val restored = AudioClipManager()
         try {
             val clips = JSONObject(json).optJSONArray("clips") ?: JSONArray()
             for (i in 0 until clips.length()) {
@@ -225,23 +227,26 @@ object TimelineStateCodec {
                 )
                 val laneIndex = item.optInt("laneIndex", -1)
                 if (laneIndex >= 0) {
-                    while (manager.lanes.size <= laneIndex) manager.lanes.add(AudioLane())
-                    val lane = manager.lanes[laneIndex]
+                    while (restored.lanes.size <= laneIndex) restored.lanes.add(AudioLane())
+                    val lane = restored.lanes[laneIndex]
                     if (lane.clips.none { existing ->
                             clip.startTimeMs < existing.endTimeMs &&
                                 clip.endTimeMs > existing.startTimeMs
                         }) {
                         lane.clips.add(clip)
-                        manager.clips.add(clip)
+                        restored.clips.add(clip)
                     } else {
-                        manager.addClip(clip)
+                        restored.addClip(clip)
                     }
                 } else {
                     manager.addClip(clip)
                 }
             }
-        } catch (_: Exception) {
             manager.clear()
+            manager.clips.addAll(restored.clips)
+            manager.lanes.addAll(restored.lanes)
+        } catch (_: Exception) {
+            // Keep the last valid in-memory timeline when persisted data is corrupt.
         }
     }
 }
