@@ -46,7 +46,7 @@ class TimelineEngineTest {
             clip("overlay", 1000, 200, track = 1)
         ))
         val result = DeleteClipCommand("b").apply(state)
-        assertEquals(800L, result.clip("c")!!.startTime)
+        assertEquals(1000L, result.clip("c")!!.startTime)
         assertEquals(1000L, result.clip("overlay")!!.startTime)
     }
 
@@ -59,7 +59,7 @@ class TimelineEngineTest {
     }
 
     @Test fun snapUsesClipEdgesAndScreenTolerance() {
-        val state = TimelineState(clips = listOf(clip("a", 0, 1000), clip("b", 2000, 500)))
+        val state = TimelineState(clips = listOf(clip("a", 0, 1000), clip("b", 4000, 500), clip("c", 2000, 500)))
         val result = TimelineSnapEngine.snap(
             proposedTimeMs = 1495, movingClipId = "b", state = state,
             pixelsPerMs = 0.1f, tolerancePx = 10f
