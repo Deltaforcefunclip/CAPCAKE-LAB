@@ -861,7 +861,7 @@ class MainActivity : AppCompatActivity() {
         // seluruh JSON valid agar data yang sudah dimuat tidak hilang sebagian.
         val restoredProjects = try {
             val array = JSONArray(data)
-            buildList {
+            buildList<VideoProject> {
                 for (i in 0 until array.length()) {
                     val obj = array.getJSONObject(i)
                     add(
