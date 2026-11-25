@@ -4193,66 +4193,144 @@ class MainActivity : AppCompatActivity() {
     private fun showOverlayCropDialog(clip: OverlayClip) {
         val original = floatArrayOf(clip.cropLeft, clip.cropTop, clip.cropRight, clip.cropBottom)
         pushUndoSnapshot()
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(12), dp(20), dp(8))
-        }
-        val values = original.copyOf()
-        val labels = listOf("Crop kiri", "Crop atas", "Crop kanan", "Crop bawah")
-        fun refreshCrop() {
-            updateOverlayPreview()
-            updateOverlayVideoPreview()
-        }
-        labels.forEachIndexed { index, title ->
-            val label = TextView(this).apply {
-                text = "$title: ${(values[index] * 100).toInt()}%"
-                setTextColor(Color.WHITE)
+
+        val preview = previewFrameContainer
+        val guide = object : View(this) {
+            private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                strokeWidth = dp(2).toFloat()
+                style = Paint.Style.STROKE
             }
-            val seek = SeekBar(this).apply {
-                max = 90
-                progress = (values[index] * 100).toInt().coerceIn(0, 90)
+            private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = green
+                style = Paint.Style.FILL
             }
-            seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(bar: SeekBar?, value: Int, fromUser: Boolean) {
-                    values[index] = value / 100f
-                    label.text = "$title: $value%"
-                    clip.cropLeft = values[0]
-                    clip.cropTop = values[1]
-                    clip.cropRight = values[2]
-                    clip.cropBottom = values[3]
-                    refreshCrop()
+            private var activeEdge = -1
+            private var lastX = 0f
+            private var lastY = 0f
+            private val edgeNames = arrayOf("KIRI", "ATAS", "KANAN", "BAWAH")
+
+            override fun onDraw(canvas: Canvas) {
+                super.onDraw(canvas)
+                val left = width * clip.cropLeft / 2f
+                val top = height * clip.cropTop / 2f
+                val right = width * (1f - clip.cropRight / 2f)
+                val bottom = height * (1f - clip.cropBottom / 2f)
+                linePaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(dp(8).toFloat(), dp(5).toFloat()), 0f)
+                canvas.drawRect(left, top, right, bottom, linePaint)
+                linePaint.pathEffect = null
+                val radius = dp(7).toFloat()
+                listOf(
+                    left to top, (left + right) / 2f to top, right to top,
+                    left to (top + bottom) / 2f, right to (top + bottom) / 2f,
+                    left to bottom, (left + right) / 2f to bottom, right to bottom
+                ).forEach { (x, y) -> canvas.drawCircle(x, y, radius, handlePaint) }
+                val hint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.WHITE
+                    textSize = dp(11).toFloat()
+                    setShadowLayer(dp(3).toFloat(), 0f, 1f, Color.BLACK)
                 }
-                override fun onStartTrackingTouch(bar: SeekBar?) {}
-                override fun onStopTrackingTouch(bar: SeekBar?) {}
-            })
-            content.addView(label)
-            content.addView(seek)
+                canvas.drawText("GESER GARIS UNTUK CROP", dp(12).toFloat(), dp(24).toFloat(), hint)
+            }
+
+            override fun onTouchEvent(event: MotionEvent): Boolean {
+                val left = width * clip.cropLeft / 2f
+                val top = height * clip.cropTop / 2f
+                val right = width * (1f - clip.cropRight / 2f)
+                val bottom = height * (1f - clip.cropBottom / 2f)
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        val distances = floatArrayOf(
+                            abs(event.x - left), abs(event.y - top),
+                            abs(event.x - right), abs(event.y - bottom)
+                        )
+                        val nearest = distances.indices.minByOrNull { distances[it] } ?: 0
+                        if (distances[nearest] > dp(42)) return false
+                        activeEdge = nearest
+                        lastX = event.x
+                        lastY = event.y
+                        parent?.requestDisallowInterceptTouchEvent(true)
+                        return true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val dx = (event.x - lastX) * 2f / width.coerceAtLeast(1)
+                        val dy = (event.y - lastY) * 2f / height.coerceAtLeast(1)
+                        when (activeEdge) {
+                            0 -> clip.cropLeft = (clip.cropLeft + dx).coerceIn(0f, 0.95f - clip.cropRight)
+                            1 -> clip.cropTop = (clip.cropTop + dy).coerceIn(0f, 0.95f - clip.cropBottom)
+                            2 -> clip.cropRight = (clip.cropRight - dx).coerceIn(0f, 0.95f - clip.cropLeft)
+                            3 -> clip.cropBottom = (clip.cropBottom - dy).coerceIn(0f, 0.95f - clip.cropTop)
+                        }
+                        lastX = event.x
+                        lastY = event.y
+                        updateOverlayPreview()
+                        updateOverlayVideoPreview()
+                        invalidate()
+                        return true
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        activeEdge = -1
+                        parent?.requestDisallowInterceptTouchEvent(false)
+                        return true
+                    }
+                }
+                return true
+            }
+        }.apply {
+            isClickable = true
+            isFocusable = true
+            elevation = dp(30).toFloat()
         }
-        val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Crop Overlay")
-            .setView(content)
-            .setNegativeButton("Batal") { _, _ ->
+
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(8), dp(6), dp(8), dp(6))
+            setBackgroundColor(Color.argb(225, 20, 20, 20))
+            elevation = dp(32).toFloat()
+        }
+        fun finishCrop(save: Boolean) {
+            if (!save) {
                 clip.cropLeft = original[0]
                 clip.cropTop = original[1]
                 clip.cropRight = original[2]
                 clip.cropBottom = original[3]
                 undoStack.removeLastOrNull()
-                refreshCrop()
-            }
-            .setPositiveButton("Simpan") { _, _ ->
+            } else {
                 saveCurrentProject()
                 refreshOverlayTracks()
             }
-            .create()
-        dialog.setOnCancelListener {
-            clip.cropLeft = original[0]
-            clip.cropTop = original[1]
-            clip.cropRight = original[2]
-            clip.cropBottom = original[3]
-            undoStack.removeLastOrNull()
-            refreshCrop()
+            preview.removeView(guide)
+            preview.removeView(controls)
+            updateOverlayPreview()
+            updateOverlayVideoPreview()
         }
-        dialog.show()
+        val cancel = TextView(this).apply {
+            text = "BATAL"
+            textSize = 12f
+            setTextColor(Color.WHITE)
+            setPadding(dp(16), dp(8), dp(16), dp(8))
+            setOnClickListener { finishCrop(false) }
+        }
+        val save = TextView(this).apply {
+            text = "SIMPAN"
+            textSize = 12f
+            setTextColor(green)
+            setPadding(dp(16), dp(8), dp(16), dp(8))
+            setOnClickListener { finishCrop(true) }
+        }
+        controls.addView(cancel)
+        controls.addView(save)
+        preview.addView(guide, FrameLayout.LayoutParams(-1, -1))
+        preview.addView(
+            controls,
+            FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
+                topMargin = dp(8)
+            }
+        )
+        guide.bringToFront()
+        controls.bringToFront()
+        Toast.makeText(this, "Geser garis putih di preview untuk mengatur crop.", Toast.LENGTH_LONG).show()
     }
 
     private fun showOverlayTransformDialog(clip: OverlayClip) {
@@ -9415,9 +9493,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         try {
-            // Urutan utama berisi video beserta audio asli dari setiap klip video.
+            // Media3 menggambar sequence dengan inputId lebih kecil di lapisan depan.
+            // Karena itu sequence video overlay harus ditambahkan SEBELUM video utama,
+            // agar video utama menjadi latar dan tidak menutupi seluruh overlay.
             val sequences = mutableListOf<EditedMediaItemSequence>()
-            sequences.add(EditedMediaItemSequence.withAudioAndVideoFrom(editedItems))
 
             // Setiap lane video overlay menjadi sequence video terpisah. Gap di awal
             // dan antar-klip menjaga posisi absolut klip pada timeline project.
@@ -9497,6 +9576,10 @@ class MainActivity : AppCompatActivity() {
                     sequences.add(sequenceBuilder.build())
                     overlaySequenceClips[inputId] = ordered
                 }
+
+            // Sequence utama ditambahkan setelah seluruh lane overlay supaya berada
+            // di belakang overlay pada urutan input compositor Media3.
+            sequences.add(EditedMediaItemSequence.withAudioAndVideoFrom(editedItems))
 
             // Audio asli video overlay diekspor sebagai sequence audio terpisah.
             // Video compositor tetap menerima sequence video-only, sedangkan setiap
