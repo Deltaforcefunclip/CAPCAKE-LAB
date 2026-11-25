@@ -5018,14 +5018,22 @@ class MainActivity : AppCompatActivity() {
                     updateToolMenu()
                 },
                 onMove = { clip, newStart ->
-                    pushUndoSnapshot()
-                    if (!overlayClipManager.moveClip(clip.id, newStart, clip.trackIndex)) {
+                    if (overlayClipManager.canMove(clip.id, newStart, clip.trackIndex)) {
+                        if (newStart != clip.startTimeMs) {
+                            pushUndoSnapshot()
+                            overlayClipManager.moveClip(clip.id, newStart, clip.trackIndex)
+                        }
+                    } else {
                         showMessage("Posisi overlay bertabrakan dengan klip lain pada track ini.")
                     }
                 },
                 onTrim = { clip, newStart, newDuration ->
-                    pushUndoSnapshot()
-                    if (!overlayClipManager.trim(clip.id, newStart, newDuration)) {
+                    if (overlayClipManager.canTrim(clip.id, newStart, newDuration)) {
+                        if (newStart != clip.startTimeMs || newDuration != clip.durationMs) {
+                            pushUndoSnapshot()
+                            overlayClipManager.trim(clip.id, newStart, newDuration)
+                        }
+                    } else {
                         showMessage("Batas trim overlay tidak valid atau bertabrakan.")
                     }
                 },
