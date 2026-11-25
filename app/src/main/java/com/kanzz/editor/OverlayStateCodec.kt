@@ -47,7 +47,7 @@ object OverlayStateCodec {
             // Payload versi lebih baru mungkin memiliki field atau semantik yang
             // belum dipahami aplikasi ini. Tolak secara atomik, jangan menimpa
             // project dengan hasil restore parsial.
-            val payloadVersion = payload.optInt("version", 1)
+            val payloadVersion = if (payload.has("version")) payload.getInt("version") else 1
             require(payloadVersion in 1..VERSION) { "Unsupported overlay state version" }
             val array = payload.getJSONArray("clips")
             for (index in 0 until array.length()) {
