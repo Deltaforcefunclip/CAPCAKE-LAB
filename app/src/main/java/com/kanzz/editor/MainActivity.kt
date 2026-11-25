@@ -658,6 +658,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun showHome() {
         editorOpen = false
+        // Player overlay memakai decoder terpisah dari video utama. Lepaskan saat
+        // kembali ke beranda agar tidak terus memutar atau menahan resource.
+        clearOverlayVideoPreviewPlayers()
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -4001,6 +4004,8 @@ class MainActivity : AppCompatActivity() {
             override fun onProgressChanged(bar: SeekBar?, value: Int, fromUser: Boolean) {
                 label.text = "Opasitas $value%"
                 clip.opacity = value / 100f
+                updateOverlayPreview()
+                updateOverlayVideoPreview()
             }
             override fun onStartTrackingTouch(bar: SeekBar?) {}
             override fun onStopTrackingTouch(bar: SeekBar?) {}
@@ -4018,6 +4023,8 @@ class MainActivity : AppCompatActivity() {
                 clip.opacity = original
                 undoStack.removeLastOrNull()
                 refreshOverlayTracks()
+                updateOverlayPreview()
+                updateOverlayVideoPreview()
             }
             .setPositiveButton("Simpan") { _, _ ->
                 saveCurrentProject()
@@ -4054,10 +4061,26 @@ class MainActivity : AppCompatActivity() {
             content.addView(label)
             content.addView(seek)
         }
-        addControl("Posisi X", clip.positionX, -1000f, 1000f) { clip.positionX = it }
-        addControl("Posisi Y", clip.positionY, -1000f, 1000f) { clip.positionY = it }
-        addControl("Ukuran", clip.scale, 0.05f, 4f) { clip.scale = it }
-        addControl("Rotasi", clip.rotation, -180f, 180f) { clip.rotation = it }
+        addControl("Posisi X", clip.positionX, -1000f, 1000f) {
+            clip.positionX = it
+            updateOverlayPreview()
+            updateOverlayVideoPreview()
+        }
+        addControl("Posisi Y", clip.positionY, -1000f, 1000f) {
+            clip.positionY = it
+            updateOverlayPreview()
+            updateOverlayVideoPreview()
+        }
+        addControl("Ukuran", clip.scale, 0.05f, 4f) {
+            clip.scale = it
+            updateOverlayPreview()
+            updateOverlayVideoPreview()
+        }
+        addControl("Rotasi", clip.rotation, -180f, 180f) {
+            clip.rotation = it
+            updateOverlayPreview()
+            updateOverlayVideoPreview()
+        }
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Transformasi Overlay")
             .setView(content)
@@ -4067,6 +4090,8 @@ class MainActivity : AppCompatActivity() {
                 clip.scale = original[2]
                 clip.rotation = original[3]
                 undoStack.removeLastOrNull()
+                updateOverlayPreview()
+                updateOverlayVideoPreview()
             }
             .setPositiveButton("Simpan") { _, _ ->
                 saveCurrentProject()
