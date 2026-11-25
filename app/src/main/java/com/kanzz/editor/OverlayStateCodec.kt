@@ -84,6 +84,7 @@ object OverlayStateCodec {
                 clip.scale = clip.scale.coerceIn(0.05f, 10f)
                 clip.opacity = clip.opacity.coerceIn(0f, 1f)
                 clip.volume = clip.volume.coerceIn(0f, 2f)
+                clip.volume = clip.volume.coerceIn(0f, 2f)
                 require(clip.positionX.isFinite() && clip.positionY.isFinite())
                 require(clip.rotation.isFinite() && clip.scale.isFinite() && clip.opacity.isFinite() && clip.volume.isFinite())
                 require(restored.find(clip.id) == null) { "Duplicate overlay clip id" }
