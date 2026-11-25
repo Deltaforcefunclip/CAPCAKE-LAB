@@ -158,4 +158,37 @@ class OverlayClipManagerTest {
         assertEquals(350L, clip.startTimeMs)
         assertEquals(0, clip.trackIndex)
     }
+
+    @Test fun movePreflightRejectsCollisionWithoutMutatingTimeline() {
+        val manager = OverlayClipManager()
+        val first = overlay("first", 0L, 1000L)
+        val second = overlay("second", 1500L, 500L)
+        manager.add(first)
+        manager.add(second)
+
+        assertFalse(manager.canMove("second", 500L, 0))
+        assertEquals(1500L, second.startTimeMs)
+        assertEquals(0, second.trackIndex)
+        assertTrue(manager.canMove("second", 500L, 1))
+        assertEquals(1500L, second.startTimeMs)
+        assertEquals(0, second.trackIndex)
+    }
+
+    @Test fun trimPreflightRejectsCollisionAndExtensionWithoutMutatingSourceRange() {
+        val manager = OverlayClipManager()
+        val first = overlay("first", 0L, 1000L)
+        val second = overlay("second", 1500L, 1000L, sourceDuration = 1000L)
+        manager.add(first)
+        manager.add(second)
+
+        assertFalse(manager.canTrim("second", 500L, 1000L))
+        assertFalse(manager.canTrim("second", 1500L, 1500L))
+        assertEquals(1500L, second.startTimeMs)
+        assertEquals(1000L, second.durationMs)
+        assertEquals(1000L, second.sourceDurationMs)
+        assertTrue(manager.canTrim("second", 1600L, 800L))
+        assertEquals(1500L, second.startTimeMs)
+        assertEquals(1000L, second.durationMs)
+        assertEquals(1000L, second.sourceDurationMs)
+    }
 }
