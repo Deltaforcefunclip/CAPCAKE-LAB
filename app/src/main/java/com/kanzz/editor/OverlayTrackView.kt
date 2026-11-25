@@ -50,6 +50,7 @@ class OverlayTrackView(
     private var previewStart = 0L
     private var previewDuration = 0L
     private var moved = false
+    private var multiTouchCancelled = false
 
     fun select(id: String?) {
         selectedId = id
@@ -105,6 +106,7 @@ class OverlayTrackView(
                 downX = event.x
                 lastX = event.x
                 moved = false
+                multiTouchCancelled = false
                 touched = hit(event.x)
                 mode = 0
                 touched?.let { clip ->
@@ -115,7 +117,8 @@ class OverlayTrackView(
                     previewDuration = originDuration
                     val left = controller.timeToX(clip.startTimeMs)
                     val right = controller.timeToX(clip.endTimeMs)
-                    val edge = 18f * density
+                    // Sisakan area tengah untuk drag meskipun klip sangat pendek.
+                    val edge = minOf(18f * density, (right - left).coerceAtLeast(0f) / 3f)
                     mode = when {
                         event.x - left <= edge -> 2
                         right - event.x <= edge -> 3
@@ -126,7 +129,15 @@ class OverlayTrackView(
                 invalidate()
                 return true
             }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                // Track overlay memakai satu jari. Abaikan gesture multi-touch agar
+                // pinch tidak berubah menjadi perpindahan/trim klip yang tidak disengaja.
+                multiTouchCancelled = true
+                moved = false
+                return true
+            }
             MotionEvent.ACTION_MOVE -> {
+                if (multiTouchCancelled) return true
                 val clip = touched
                 if (clip != null && controller.pixelsPerMs > 0f) {
                     val delta = ((event.x - downX) / controller.pixelsPerMs).toLong()
@@ -138,7 +149,9 @@ class OverlayTrackView(
                                 previewStart = (originStart + delta).coerceIn(0L, end - 100L)
                                 previewDuration = end - previewStart
                             }
-                            3 -> previewDuration = (originDuration + delta).coerceAtLeast(100L)
+                            // Trim hanya memperpendek klip. Memperpanjang akan melampaui
+                            // source range dan ditolak manager setelah preview terlihat bergerak.
+                            3 -> previewDuration = (originDuration + delta).coerceIn(100L, originDuration)
                             else -> previewStart = (originStart + delta).coerceAtLeast(0L)
                         }
                         invalidate()
@@ -159,7 +172,7 @@ class OverlayTrackView(
             }
             MotionEvent.ACTION_UP -> {
                 val clip = touched
-                if (clip != null && moved) {
+                if (!multiTouchCancelled && clip != null && moved) {
                     when (mode) {
                         1 -> onMove(clip, previewStart)
                         else -> onTrim(clip, previewStart, previewDuration)
@@ -169,6 +182,7 @@ class OverlayTrackView(
                 parent?.requestDisallowInterceptTouchEvent(false)
                 touched = null
                 mode = 0
+                multiTouchCancelled = false
                 performClick()
                 invalidate()
                 return true
@@ -178,6 +192,7 @@ class OverlayTrackView(
                 touched = null
                 mode = 0
                 moved = false
+                multiTouchCancelled = false
                 invalidate()
                 return true
             }
