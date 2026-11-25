@@ -90,15 +90,28 @@ object TimelineStateCodec {
         val restored = VideoClipManager()
         try {
             val root = JSONObject(json)
+            val versionValue = root.opt("version") ?: VERSION
+            require(versionValue is Number && versionValue.toDouble() == VERSION.toDouble()) {
+                "Unsupported or malformed video timeline version"
+            }
             val clips = root.getJSONArray("clips")
             for (i in 0 until clips.length()) {
                 val item = clips.getJSONObject(i)
+                val clipId = item.optString("id")
+                val sourceUri = item.optString("sourceUri")
+                val sourceStart = item.optLong("sourceStartMs")
+                val clipDuration = item.optLong("durationMs")
+                val sourceDuration = item.optLong("sourceDurationMs", clipDuration)
+                require(clipId.isNotBlank() && sourceUri.isNotBlank())
+                require(restored.clips.none { it.id == clipId }) { "Duplicate video clip id" }
+                require(sourceStart >= 0L && clipDuration > 0L && sourceDuration >= clipDuration)
+                require(sourceStart <= sourceDuration - clipDuration)
                 restored.clips.add(VideoClip(
-                    id = item.optString("id"),
-                    sourceUri = item.getString("sourceUri"),
-                    sourceStartMs = item.optLong("sourceStartMs"),
-                    durationMs = item.optLong("durationMs"),
-                    sourceDurationMs = item.optLong("sourceDurationMs", item.optLong("durationMs")),
+                    id = clipId,
+                    sourceUri = sourceUri,
+                    sourceStartMs = sourceStart,
+                    durationMs = clipDuration,
+                    sourceDurationMs = sourceDuration,
                     volume = item.optDouble("volume", 1.0).toFloat(),
                     speed = item.optDouble("speed", 1.0).toFloat(),
                     opacity = item.optDouble("opacity", 1.0).toFloat(),
@@ -211,17 +224,32 @@ object TimelineStateCodec {
         if (json.isNullOrBlank()) return
         val restored = AudioClipManager()
         try {
-            val clips = JSONObject(json).getJSONArray("clips")
+            val root = JSONObject(json)
+            val versionValue = root.opt("version") ?: VERSION
+            require(versionValue is Number && versionValue.toDouble() == VERSION.toDouble()) {
+                "Unsupported or malformed audio timeline version"
+            }
+            val clips = root.getJSONArray("clips")
             for (i in 0 until clips.length()) {
                 val item = clips.getJSONObject(i)
+                val clipId = item.optString("id")
+                val clipStart = item.optLong("startTimeMs")
+                val clipDuration = item.optLong("durationMs")
+                val sourceStart = item.optLong("sourceStartMs")
+                val sourceDuration = item.optLong("sourceDurationMs", clipDuration)
+                val filePath = item.optString("filePath")
+                require(clipId.isNotBlank() && filePath.isNotBlank())
+                require(restored.clips.none { it.id == clipId }) { "Duplicate audio clip id" }
+                require(clipStart >= 0L && clipDuration > 0L && sourceStart >= 0L)
+                require(sourceDuration >= clipDuration && sourceStart <= sourceDuration - clipDuration)
                 val clip = AudioClip(
-                    id = item.optString("id"),
-                    startTimeMs = item.optLong("startTimeMs"),
-                    durationMs = item.optLong("durationMs"),
-                    filePath = item.getString("filePath"),
-                    sourceStartMs = item.optLong("sourceStartMs"),
+                    id = clipId,
+                    startTimeMs = clipStart,
+                    durationMs = clipDuration,
+                    filePath = filePath,
+                    sourceStartMs = sourceStart,
                     name = item.optString("name", "Audio"),
-                    sourceDurationMs = item.optLong("sourceDurationMs", item.optLong("durationMs")),
+                    sourceDurationMs = sourceDuration,
                     volume = item.optDouble("volume", 1.0).toFloat(),
                     speed = item.optDouble("speed", 1.0).toFloat()
                 )
