@@ -9507,7 +9507,9 @@ class MainActivity : AppCompatActivity() {
                         it.startTimeMs < videoClipManager.durationMs
                 }
                 .groupBy { it.trackIndex }
-                .toSortedMap()
+                // Track index yang lebih tinggi berada di depan pada preview.
+                // Masukkan lebih dahulu karena inputId lebih kecil dirender di depan.
+                .toSortedMap(compareByDescending<Int> { it })
                 .values
                 .forEach { laneClips ->
                     // Export tidak boleh menjadi lebih panjang daripada main track.
