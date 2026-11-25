@@ -143,7 +143,9 @@ class MainActivity : AppCompatActivity() {
     private val effectClipManager = EffectClipManager()
     private val overlayClipManager = OverlayClipManager()
     private var selectedOverlayClipId: String? = null
-    private lateinit var overlayPreviewImageView: ImageView
+    private val overlayImagePreviewViews = mutableMapOf<String, ImageView>()
+    private val overlayImagePreviewBitmaps = mutableMapOf<String, Bitmap>()
+    private val overlayImagePreviewGenerations = mutableMapOf<String, Int>()
     private lateinit var overlayVideoPreviewContainer: FrameLayout
     private val overlayVideoPreviewPlayers = mutableMapOf<String, ExoPlayer>()
     private val overlayVideoPreviewViews = mutableMapOf<String, PlayerView>()
@@ -1640,16 +1642,6 @@ class MainActivity : AppCompatActivity() {
         previewFrame.addView(
             playerView,
             FrameLayout.LayoutParams(-1, -1)
-        )
-        overlayPreviewImageView = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            visibility = View.GONE
-            isClickable = false
-            isFocusable = false
-        }
-        previewFrame.addView(
-            overlayPreviewImageView,
-            FrameLayout.LayoutParams(dp(180), dp(180), Gravity.CENTER)
         )
         overlayVideoPreviewContainer = FrameLayout(this).apply {
             isClickable = false
@@ -6472,61 +6464,110 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Preview image overlay teratas mengikuti playhead project. */
+    /**
+     * Render seluruh image overlay aktif. Export juga merender semua lane,
+     * jadi preview tidak boleh hanya menampilkan klip dari lane paling atas.
+     */
     private fun updateOverlayPreview() {
-        if (!::overlayPreviewImageView.isInitialized) return
+        if (!::previewFrameContainer.isInitialized) return
         val position = currentTimelinePosition()
-        val clip = overlayClipManager.clips
-            .filter {
-                it.mediaType == OverlayClip.Type.IMAGE &&
-                    position >= it.startTimeMs && position < it.endTimeMs
-            }
-            .maxByOrNull { it.trackIndex }
+        val active = overlayClipManager.clips.filter {
+            it.mediaType == OverlayClip.Type.IMAGE &&
+                position >= it.startTimeMs && position < it.endTimeMs
+        }.sortedBy { it.trackIndex }
+        val activeIds = active.map { it.id }.toSet()
 
-        if (clip == null) {
-            if (lastOverlayPreviewClipId != null) {
-                overlayPreviewGeneration++
-                lastOverlayPreviewClipId = null
-                overlayPreviewImageView.setImageDrawable(null)
-            }
-            overlayPreviewImageView.visibility = View.GONE
-            return
-        }
-
-        overlayPreviewImageView.visibility = View.VISIBLE
-        overlayPreviewImageView.alpha = clip.opacity.coerceIn(0f, 1f)
-        overlayPreviewImageView.scaleX = clip.scale.coerceIn(0.05f, 10f)
-        overlayPreviewImageView.scaleY = clip.scale.coerceIn(0.05f, 10f)
-        overlayPreviewImageView.rotation = clip.rotation
-        overlayPreviewImageView.translationX = clip.positionX
-        overlayPreviewImageView.translationY = clip.positionY
-
-        if (lastOverlayPreviewClipId == clip.id) return
-        lastOverlayPreviewClipId = clip.id
-        val generation = ++overlayPreviewGeneration
-        overlayPreviewImageView.setImageDrawable(null)
-        overlayPreviewExecutor.execute {
-            val bitmap = runCatching {
-                contentResolver.openInputStream(Uri.parse(clip.sourceUri))?.use {
-                    BitmapFactory.decodeStream(it)
-                }
-            }.getOrNull()
-            runOnUiThread {
-                if (generation != overlayPreviewGeneration ||
-                    lastOverlayPreviewClipId != clip.id ||
-                    !::overlayPreviewImageView.isInitialized
-                ) {
-                    bitmap?.recycle()
-                    return@runOnUiThread
-                }
-                if (bitmap == null) {
-                    overlayPreviewImageView.visibility = View.GONE
-                    showMessage("Gambar overlay tidak dapat dibaca.")
-                } else {
-                    overlayPreviewImageView.setImageBitmap(bitmap)
-                }
+        val staleIds = overlayImagePreviewViews.keys.filter { it !in activeIds }
+        staleIds.forEach { id ->
+            overlayImagePreviewGenerations[id] = (overlayImagePreviewGenerations[id] ?: 0) + 1
+            overlayImagePreviewViews.remove(id)?.let { view ->
+                view.setImageDrawable(null)
+                previewFrameContainer.removeView(view)
             }
         }
+
+        active.forEach { clip ->
+            val view = overlayImagePreviewViews.getOrPut(clip.id) {
+                ImageView(this).apply {
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    adjustViewBounds = true
+                    isClickable = false
+                    isFocusable = false
+                    contentDescription = "Image overlay"
+                }.also { created ->
+                    val insertAt = if (::overlayVideoPreviewContainer.isInitialized) {
+                        previewFrameContainer.indexOfChild(overlayVideoPreviewContainer).coerceAtLeast(0)
+                    } else {
+                        previewFrameContainer.childCount
+                    }
+                    previewFrameContainer.addView(
+                        created,
+                        insertAt,
+                        FrameLayout.LayoutParams(
+                            (previewFrameContainer.width.takeIf { it > 0 } ?: dp(360)) / 2,
+                            FrameLayout.LayoutParams.WRAP_CONTENT,
+                            Gravity.CENTER
+                        )
+                    )
+                }
+            }
+
+            view.alpha = clip.opacity.coerceIn(0f, 1f)
+            view.scaleX = clip.scale.coerceIn(0.05f, 10f)
+            view.scaleY = clip.scale.coerceIn(0.05f, 10f)
+            view.rotation = clip.rotation
+            view.translationX = clip.positionX
+            view.translationY = clip.positionY
+
+            val cached = overlayImagePreviewBitmaps[clip.id]
+            if (cached != null) {
+                if (view.drawable == null) view.setImageBitmap(cached)
+                return@forEach
+            }
+            if (overlayImagePreviewGenerations.containsKey(clip.id)) return@forEach
+
+            val generation = (overlayImagePreviewGenerations[clip.id] ?: 0) + 1
+            overlayImagePreviewGenerations[clip.id] = generation
+            overlayPreviewExecutor.execute {
+                val bitmap = runCatching {
+                    contentResolver.openInputStream(Uri.parse(clip.sourceUri))?.use {
+                        BitmapFactory.decodeStream(it)
+                    }
+                }.getOrNull()
+                runOnUiThread {
+                    val stillActive = overlayImagePreviewViews.containsKey(clip.id) &&
+                        overlayImagePreviewGenerations[clip.id] == generation &&
+                        overlayClipManager.find(clip.id) != null
+                    if (!stillActive) {
+                        bitmap?.recycle()
+                        return@runOnUiThread
+                    }
+                    if (bitmap == null) {
+                        overlayImagePreviewViews[clip.id]?.visibility = View.GONE
+                        showMessage("Gambar overlay tidak dapat dibaca.")
+                    } else {
+                        overlayImagePreviewBitmaps[clip.id] = bitmap
+                        overlayImagePreviewViews[clip.id]?.setImageBitmap(bitmap)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun clearOverlayImagePreview() {
+        overlayImagePreviewGenerations.keys.toList().forEach { id ->
+            overlayImagePreviewGenerations[id] = (overlayImagePreviewGenerations[id] ?: 0) + 1
+        }
+        overlayImagePreviewViews.values.forEach { view ->
+            view.setImageDrawable(null)
+            if (::previewFrameContainer.isInitialized) previewFrameContainer.removeView(view)
+        }
+        overlayImagePreviewViews.clear()
+        overlayImagePreviewBitmaps.values.forEach { bitmap ->
+            if (!bitmap.isRecycled) bitmap.recycle()
+        }
+        overlayImagePreviewBitmaps.clear()
+        overlayImagePreviewGenerations.clear()
     }
 
     private fun updateTextPreview(force: Boolean = true) {
@@ -9194,7 +9235,7 @@ class MainActivity : AppCompatActivity() {
 
         saveCurrentProject()
         clearOverlayVideoPreviewPlayers()
-        overlayPreviewGeneration++
+        clearOverlayImagePreview()
         overlayPreviewExecutor.shutdown()
 
         handler.removeCallbacksAndMessages(null)
