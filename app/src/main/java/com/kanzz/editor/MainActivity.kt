@@ -6382,6 +6382,145 @@ class MainActivity : AppCompatActivity() {
 
     private var lastPreviewTextStateKey: Long = Long.MIN_VALUE
 
+    /**
+     * Manipulasi langsung overlay dari preview:
+     * satu jari untuk memindahkan, dua jari untuk mengubah ukuran dan rotasi.
+     * Koordinat sentuh memakai rawX/rawY agar tetap konsisten saat view sedang
+     * memiliki scale atau rotation.
+     */
+    private fun installOverlayGesture(view: View, clipId: String) {
+        var downX = 0f
+        var downY = 0f
+        var lastX = 0f
+        var lastY = 0f
+        var startDistance = 0f
+        var startAngle = 0f
+        var baseX = 0f
+        var baseY = 0f
+        var baseScale = 1f
+        var baseRotation = 0f
+        var changed = false
+        var undoSaved = false
+
+        fun distance(event: MotionEvent): Float {
+            val dx = event.getRawX(1) - event.getRawX(0)
+            val dy = event.getRawY(1) - event.getRawY(0)
+            return sqrt(dx * dx + dy * dy).coerceAtLeast(1f)
+        }
+        fun angle(event: MotionEvent): Float = Math.toDegrees(
+            atan2(
+                (event.getRawY(1) - event.getRawY(0)).toDouble(),
+                (event.getRawX(1) - event.getRawX(0)).toDouble()
+            )
+        ).toFloat()
+        fun beginGesture(clip: OverlayClip) {
+            baseX = clip.positionX
+            baseY = clip.positionY
+            baseScale = clip.scale
+            baseRotation = clip.rotation
+            lastX = downX
+            lastY = downY
+            startDistance = 0f
+            startAngle = 0f
+        }
+        fun applyTransform(clip: OverlayClip) {
+            view.alpha = clip.opacity.coerceIn(0f, 1f)
+            val factor = if (clip.mediaType == OverlayClip.Type.VIDEO) 0.5f else 1f
+            view.scaleX = (factor * clip.scale).coerceIn(0.025f, 10f)
+            view.scaleY = (factor * clip.scale).coerceIn(0.025f, 10f)
+            view.rotation = clip.rotation
+            view.translationX = clip.positionX
+            view.translationY = clip.positionY
+        }
+
+        view.setOnTouchListener { _, event ->
+            val clip = overlayClipManager.find(clipId) ?: return@setOnTouchListener false
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    selectedOverlayClipId = clipId
+                    downX = event.rawX
+                    downY = event.rawY
+                    changed = false
+                    undoSaved = false
+                    beginGesture(clip)
+                    true
+                }
+                MotionEvent.ACTION_POINTER_DOWN -> {
+                    if (event.pointerCount >= 2) {
+                        downX = (event.getRawX(0) + event.getRawX(1)) / 2f
+                        downY = (event.getRawY(0) + event.getRawY(1)) / 2f
+                        beginGesture(clip)
+                        startDistance = distance(event)
+                        startAngle = angle(event)
+                    }
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (event.pointerCount >= 2) {
+                        val centerX = (event.getRawX(0) + event.getRawX(1)) / 2f
+                        val centerY = (event.getRawY(0) + event.getRawY(1)) / 2f
+                        val nextScale = (baseScale * distance(event) / startDistance.coerceAtLeast(1f))
+                            .coerceIn(0.05f, 10f)
+                        val nextRotation = baseRotation + (angle(event) - startAngle)
+                        val nextX = baseX + centerX - downX
+                        val nextY = baseY + centerY - downY
+                        if (!undoSaved && (abs(nextScale - clip.scale) > 0.001f ||
+                                abs(nextRotation - clip.rotation) > 0.1f ||
+                                abs(nextX - clip.positionX) > 1f || abs(nextY - clip.positionY) > 1f)) {
+                            pushUndoSnapshot()
+                            undoSaved = true
+                        }
+                        if (undoSaved) changed = true
+                        clip.scale = nextScale
+                        clip.rotation = nextRotation
+                        clip.positionX = nextX
+                        clip.positionY = nextY
+                    } else if (event.pointerCount == 1) {
+                        val dx = event.rawX - lastX
+                        val dy = event.rawY - lastY
+                        if (!undoSaved && (abs(event.rawX - downX) > dp(3) || abs(event.rawY - downY) > dp(3))) {
+                            pushUndoSnapshot()
+                            undoSaved = true
+                        }
+                        if (undoSaved) {
+                            clip.positionX += dx
+                            clip.positionY += dy
+                            changed = true
+                        }
+                        lastX = event.rawX
+                        lastY = event.rawY
+                    }
+                    if (changed) applyTransform(clip)
+                    true
+                }
+                MotionEvent.ACTION_POINTER_UP -> {
+                    if (event.pointerCount > 1) {
+                        val remaining = if (event.actionIndex == 0) 1 else 0
+                        downX = event.getRawX(remaining)
+                        downY = event.getRawY(remaining)
+                        beginGesture(clip)
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (changed) saveCurrentProject()
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    if (undoSaved) {
+                        clip.positionX = baseX
+                        clip.positionY = baseY
+                        clip.scale = baseScale
+                        clip.rotation = baseRotation
+                        applyTransform(clip)
+                    }
+                    true
+                }
+                else -> true
+            }
+        }
+    }
+
     private fun clearOverlayVideoPreviewPlayers() {
         overlayVideoPreviewPlayers.values.forEach { it.release() }
         overlayVideoPreviewPlayers.clear()
@@ -6437,6 +6576,7 @@ class MainActivity : AppCompatActivity() {
                     setShutterBackgroundColor(Color.TRANSPARENT)
                     setKeepContentOnPlayerReset(true)
                     player = overlayPlayer
+                    installOverlayGesture(this, clip.id)
                 }
                 overlayVideoPreviewContainer.addView(
                     overlayView,
@@ -6504,6 +6644,7 @@ class MainActivity : AppCompatActivity() {
                     isClickable = false
                     isFocusable = false
                     contentDescription = "Image overlay"
+                    installOverlayGesture(this, clip.id)
                 }.also { created ->
                     val insertAt = if (::overlayVideoPreviewContainer.isInitialized) {
                         previewFrameContainer.indexOfChild(overlayVideoPreviewContainer).coerceAtLeast(0)
