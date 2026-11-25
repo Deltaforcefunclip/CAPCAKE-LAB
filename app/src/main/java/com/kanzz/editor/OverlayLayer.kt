@@ -23,7 +23,11 @@ data class OverlayClip(
     var scale: Float = 1f,
     var rotation: Float = 0f,
     var opacity: Float = 1f,
-    var volume: Float = 1f
+    var volume: Float = 1f,
+    var cropLeft: Float = 0f,
+    var cropTop: Float = 0f,
+    var cropRight: Float = 0f,
+    var cropBottom: Float = 0f
 ) {
     enum class Type { VIDEO, IMAGE }
 
