@@ -6557,9 +6557,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Sinkronkan pemutar video overlay ke posisi main timeline. */
-    private fun updateOverlayVideoPreview() {
+    private fun updateOverlayVideoPreview(positionMs: Long = currentTimelinePosition()) {
         if (!::overlayVideoPreviewContainer.isInitialized || !::player.isInitialized) return
-        val position = currentTimelinePosition()
+        // Gunakan posisi yang sama dengan playhead UI, termasuk saat pengguna
+        // menggeser timeline ketika pemutar utama sedang berhenti.
+        val position = positionMs.coerceAtLeast(0L)
         val active = overlayClipManager.clips.filter {
             it.mediaType == OverlayClip.Type.VIDEO &&
                 position >= it.startTimeMs && position < it.endTimeMs
@@ -6640,9 +6642,10 @@ class MainActivity : AppCompatActivity() {
      * Render seluruh image overlay aktif. Export juga merender semua lane,
      * jadi preview tidak boleh hanya menampilkan klip dari lane paling atas.
      */
-    private fun updateOverlayPreview() {
+    private fun updateOverlayPreview(positionMs: Long = currentTimelinePosition()) {
         if (!::previewFrameContainer.isInitialized) return
-        val position = currentTimelinePosition()
+        // Preview gambar dan video harus membaca posisi playhead yang sama.
+        val position = positionMs.coerceAtLeast(0L)
         val active = overlayClipManager.clips.filter {
             it.mediaType == OverlayClip.Type.IMAGE &&
                 position >= it.startTimeMs && position < it.endTimeMs
@@ -8150,8 +8153,8 @@ class MainActivity : AppCompatActivity() {
         // Sinkronkan transformasi gambar dengan klip yang tepat di bawah playhead.
         applyPreviewTransform()
         updateDreamyPreviewOverlay()
-        updateOverlayPreview()
-        updateOverlayVideoPreview()
+        updateOverlayPreview(position)
+        updateOverlayVideoPreview(position)
         updateTextPreview(force = false)
 
         currentProject?.position = position
