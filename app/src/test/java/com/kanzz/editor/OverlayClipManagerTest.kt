@@ -81,6 +81,22 @@ class OverlayClipManagerTest {
         assertEquals(1750L, second.startTimeMs)
     }
 
+    @Test fun videoSourceDurationStaysAlignedAfterOddLengthSplit() {
+        val manager = OverlayClipManager()
+        val clip = overlay("odd", 0L, 2001L, sourceDuration = 2000L)
+        manager.add(clip)
+
+        assertEquals(2001L, clip.sourceDurationMs)
+        val second = manager.split("odd", 1000L)
+
+        assertNotNull(second)
+        assertEquals(1000L, clip.sourceDurationMs)
+        assertEquals(1001L, second!!.sourceStartMs)
+        assertEquals(1001L, second.sourceDurationMs)
+        assertEquals(clip.durationMs, clip.sourceDurationMs)
+        assertEquals(second.durationMs, second.sourceDurationMs)
+    }
+
     @Test fun splitImageKeepsSameSourceAndRejectsBoundaries() {
         val manager = OverlayClipManager()
         val clip = overlay("image", 200L, 1000L, type = OverlayClip.Type.IMAGE)
