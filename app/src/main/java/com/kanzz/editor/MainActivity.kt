@@ -3945,23 +3945,52 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun importOverlayMedia(uri: Uri) {
-        try {
+        val mime = contentResolver.getType(uri).orEmpty().lowercase(Locale.ROOT)
+        val displayName = runCatching {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0).orEmpty() else ""
+                }.orEmpty()
+        }.getOrDefault("")
+        val extension = displayName.substringAfterLast('.', "").lowercase(Locale.ROOT)
+        val videoExtensions = setOf("mp4", "m4v", "mov", "mkv", "webm", "3gp")
+        val imageExtensions = setOf("jpg", "jpeg", "png")
+        val isVideo = mime.startsWith("video/") || extension in videoExtensions
+        val isImage = mime.startsWith("image/") || extension in imageExtensions
+        if (!isVideo && !isImage) {
+            showMessage("Format Overlay belum didukung. Pilih video atau gambar JPG, JPEG, PNG.")
+            return
+        }
+        val type = if (isVideo) OverlayClip.Type.VIDEO else OverlayClip.Type.IMAGE
+
+        // Simpan grant jika penyedia file mendukungnya. Gambar juga disalin ke
+        // penyimpanan internal agar tetap tersedia setelah aplikasi dibuka ulang.
+        runCatching {
             contentResolver.takePersistableUriPermission(
                 uri,
                 android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
-        } catch (_: Exception) {
-            showMessage("Izin akses file overlay tidak dapat disimpan.")
-            return
         }
+        val stableUri = if (type == OverlayClip.Type.IMAGE) {
+            runCatching {
+                val directory = File(filesDir, "overlay_media").apply { mkdirs() }
+                val suffix = if (extension in imageExtensions) extension else if (mime == "image/png") "png" else "jpg"
+                val destination = File(directory, "overlay_${System.currentTimeMillis()}_${java.util.UUID.randomUUID()}.$suffix")
+                contentResolver.openInputStream(uri)?.use { input ->
+                    destination.outputStream().use { output -> input.copyTo(output) }
+                } ?: throw IllegalStateException("File gambar tidak dapat dibaca")
+                Uri.fromFile(destination)
+            }.getOrElse {
+                showMessage("Gambar gagal disalin: ${it.localizedMessage ?: "file tidak dapat dibaca"}")
+                return
+            }
+        } else uri
 
-        val mime = contentResolver.getType(uri).orEmpty()
-        val type = if (mime.startsWith("video/")) OverlayClip.Type.VIDEO else OverlayClip.Type.IMAGE
         val sourceDuration = if (type == OverlayClip.Type.VIDEO) {
             runCatching {
                 MediaMetadataRetriever().let { retriever ->
                     try {
-                        retriever.setDataSource(this, uri)
+                        retriever.setDataSource(this, stableUri)
                         retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
                             ?.toLongOrNull() ?: 0L
                     } finally {
@@ -3978,7 +4007,7 @@ class MainActivity : AppCompatActivity() {
 
         pushUndoSnapshot()
         val clip = OverlayClip(
-            sourceUri = uri.toString(),
+            sourceUri = stableUri.toString(),
             mediaType = type,
             startTimeMs = currentTimelinePosition().coerceAtLeast(0L),
             durationMs = sourceDuration.coerceAtLeast(1L),
@@ -3993,7 +4022,7 @@ class MainActivity : AppCompatActivity() {
         updateOverlayPreview()
         updateOverlayVideoPreview()
         updateToolMenu()
-        showMessage(if (type == OverlayClip.Type.VIDEO) "Video overlay ditambahkan ke timeline." else "Gambar overlay ditambahkan ke timeline.")
+        showMessage(if (type == OverlayClip.Type.VIDEO) "Video overlay ditambahkan ke timeline." else "Gambar JPG/PNG overlay ditambahkan ke timeline.")
     }
 
     private fun showEffectPicker() {
