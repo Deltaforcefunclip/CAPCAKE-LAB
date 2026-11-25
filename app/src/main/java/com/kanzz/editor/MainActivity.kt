@@ -2411,6 +2411,8 @@ class MainActivity : AppCompatActivity() {
                         timeline.invalidate()
                         audioTrackViews.values.forEach { it.invalidate() }
                         invalidateTextTrackViews()
+                        invalidateEffectTrackViews()
+                        invalidateOverlayTrackViews()
                         return true
                     }
                 }
@@ -2421,6 +2423,7 @@ class MainActivity : AppCompatActivity() {
                     "AUDIO" -> (audioTracksContainer.height - audioTracksScroll.scrollY).coerceAtLeast(0)
                     "TEXT" -> (thisTextTracksContainer.height - textTracksScroll.scrollY).coerceAtLeast(0)
                     "EFFECT" -> (thisEffectTracksContainer.height - effectTracksScroll.scrollY).coerceAtLeast(0)
+                    "OVERLAY" -> (thisOverlayTracksContainer.height - overlayTracksScroll.scrollY).coerceAtLeast(0)
                     else -> 0
                 }
                 return y > visibleHeight + dp(2)
@@ -2447,6 +2450,7 @@ class MainActivity : AppCompatActivity() {
                 audioTrackViews.values.forEach { it.postInvalidateOnAnimation() }
                 invalidateTextTrackViews()
                 invalidateEffectTrackViews()
+                invalidateOverlayTrackViews()
             }
 
             private fun startPanFling(velocityX: Float) {
@@ -3336,6 +3340,8 @@ class MainActivity : AppCompatActivity() {
                 "◎" to "Tracking",
                 "☆" to "Filter",
                 "▧" to "Overlay",
+                "⇢" to "Salin ke Overlay",
+                "⇄" to "Pindah ke Overlay",
                 "◇" to "Stabilkan",
                 "▤" to "Duplikat",
                 "〰" to "Motion Blur",
@@ -3636,6 +3642,14 @@ class MainActivity : AppCompatActivity() {
                         if (textClipManager.clips.isEmpty() || !switchingGroup) showTextEditor()
                     }
 
+                    "Salin ke Overlay" -> {
+                        transferSelectedVideoToOverlay(moveFromMainTrack = false)
+                    }
+
+                    "Pindah ke Overlay" -> {
+                        transferSelectedVideoToOverlay(moveFromMainTrack = true)
+                    }
+
                     "Overlay", "Sticker" -> {
                         activeLayerGroup = if (pair.second == "Overlay") "OVERLAY" else "STICKER"
                         selectedVideoClipId = null
@@ -3856,6 +3870,63 @@ class MainActivity : AppCompatActivity() {
             return
         }
         pickOverlayMedia.launch(arrayOf("image/*", "video/*"))
+    }
+
+    /**
+     * Menyalin atau memindahkan segmen video terpilih ke Overlay.
+     * Overlay saat ini berjalan pada kecepatan 1x, jadi segmen dengan speed
+     * berbeda harus dinormalisasi terlebih dahulu agar rentang sumber tidak meleset.
+     */
+    private fun transferSelectedVideoToOverlay(moveFromMainTrack: Boolean) {
+        val source = videoClipManager.find(selectedVideoClipId)
+        if (source == null) {
+            showMessage("Pilih klip video di timeline utama terlebih dahulu.")
+            return
+        }
+        if (kotlin.math.abs(source.speed - 1f) > 0.001f) {
+            showMessage("Untuk memindahkan klip berkecepatan khusus ke Overlay, ubah kecepatannya ke 1x terlebih dahulu.")
+            return
+        }
+
+        pushUndoSnapshot()
+        val overlay = OverlayClip(
+            sourceUri = source.sourceUri,
+            mediaType = OverlayClip.Type.VIDEO,
+            startTimeMs = source.timelineStartMs.coerceAtLeast(0L),
+            durationMs = source.durationMs.coerceAtLeast(1L),
+            sourceStartMs = source.sourceStartMs.coerceAtLeast(0L),
+            sourceDurationMs = source.durationMs.coerceAtLeast(1L)
+        )
+        overlayClipManager.add(overlay)
+
+        if (moveFromMainTrack) {
+            videoClipManager.remove(source.id)
+            selectedVideoClipId = null
+            videoSelected = false
+        }
+
+        selectedOverlayClipId = overlay.id
+        selectedAudioClipId = null
+        selectedTextClipId = null
+        selectedEffectClipId = null
+        clearAudioTrackSelection()
+        activeLayerGroup = "OVERLAY"
+        updateLayerGroupVisibility()
+        refreshOverlayTracks()
+        val position = timelineController.positionMs.coerceAtMost(videoClipManager.durationMs)
+        if (moveFromMainTrack) {
+            refreshEditedPreview(position)
+        } else {
+            timeline.invalidate()
+        }
+        saveCurrentProject()
+        updateOverlayPreview()
+        updateOverlayVideoPreview()
+        updateToolMenu()
+        showMessage(
+            if (moveFromMainTrack) "Klip dipindahkan dari timeline utama ke Overlay."
+            else "Salinan klip ditambahkan ke Overlay."
+        )
     }
 
     private fun importOverlayMedia(uri: Uri) {
