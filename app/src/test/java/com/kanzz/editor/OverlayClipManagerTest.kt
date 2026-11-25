@@ -240,11 +240,11 @@ class OverlayClipManagerTest {
 
         assertNotNull(second)
         assertEquals(1300L, clip.startTimeMs)
-        assertEquals(700L, clip.sourceStartMs)
+        assertEquals(300L, clip.sourceStartMs)
         assertEquals(700L, clip.durationMs)
         assertEquals(700L, clip.sourceDurationMs)
         assertEquals(2000L, second!!.startTimeMs)
-        assertEquals(1400L, second.sourceStartMs)
+        assertEquals(1000L, second.sourceStartMs)
         assertEquals(800L, second.durationMs)
         assertEquals(800L, second.sourceDurationMs)
     }
