@@ -6534,6 +6534,11 @@ class MainActivity : AppCompatActivity() {
                         clip.scale = originalScale
                         clip.rotation = originalRotation
                         applyTransform(clip)
+                        // Gesture dibatalkan: snapshot yang dibuat saat gerakan
+                        // pertama tidak boleh tertinggal sebagai langkah Undo palsu.
+                        if (undoSaved && undoStack.isNotEmpty()) undoStack.removeLast()
+                        changed = false
+                        undoSaved = false
                     }
                     true
                 }
