@@ -207,4 +207,45 @@ class OverlayClipManagerTest {
         assertEquals(1000L, second.durationMs)
         assertEquals(1000L, second.sourceDurationMs)
     }
+
+    @Test fun moveToNewBottomLaneKeepsClipBelowExistingLanes() {
+        val manager = OverlayClipManager()
+        val first = overlay("lane-0", 0L, 1000L)
+        val second = overlay("lane-1", 0L, 1000L)
+        val moving = overlay("moving", 1500L, 500L)
+        manager.add(first)
+        manager.add(second)
+        manager.add(moving)
+
+        assertEquals(0, first.trackIndex)
+        assertEquals(1, second.trackIndex)
+        assertEquals(0, moving.trackIndex)
+
+        assertTrue(manager.moveClipToNewBottomLane("moving"))
+
+        assertEquals(0, first.trackIndex)
+        assertEquals(1, second.trackIndex)
+        assertEquals(2, moving.trackIndex)
+        assertEquals(1500L, moving.startTimeMs)
+        assertEquals(500L, moving.durationMs)
+    }
+
+    @Test fun splitAfterLeftTrimKeepsSourceAndTimelineAligned() {
+        val manager = OverlayClipManager()
+        val clip = overlay("trim-split", 1000L, 2000L)
+        manager.add(clip)
+
+        assertTrue(manager.trim("trim-split", 1300L, 1500L))
+        val second = manager.split("trim-split", 2000L)
+
+        assertNotNull(second)
+        assertEquals(1300L, clip.startTimeMs)
+        assertEquals(700L, clip.sourceStartMs)
+        assertEquals(700L, clip.durationMs)
+        assertEquals(700L, clip.sourceDurationMs)
+        assertEquals(2000L, second!!.startTimeMs)
+        assertEquals(1400L, second.sourceStartMs)
+        assertEquals(800L, second.durationMs)
+        assertEquals(800L, second.sourceDurationMs)
+    }
 }
