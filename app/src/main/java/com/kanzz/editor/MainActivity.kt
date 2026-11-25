@@ -6451,7 +6451,8 @@ class MainActivity : AppCompatActivity() {
             val seekThreshold = if (player.isPlaying) 350L else 45L
             if (overlayPlayer.playbackState == Player.STATE_IDLE ||
                 overlayPlayer.playbackState == Player.STATE_ENDED ||
-                drift > seekThreshold
+                drift > seekThreshold ||
+                (overlayPlayer.currentPosition == 0L && localPosition > 0L)
             ) {
                 overlayPlayer.seekTo(localPosition)
             }
