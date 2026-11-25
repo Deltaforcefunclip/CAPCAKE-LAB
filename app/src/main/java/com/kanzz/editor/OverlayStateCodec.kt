@@ -28,6 +28,10 @@ object OverlayStateCodec {
                 put("rotation", clip.rotation.toDouble())
                 put("opacity", clip.opacity.toDouble())
                 put("volume", clip.volume.toDouble())
+                put("cropLeft", clip.cropLeft.toDouble())
+                put("cropTop", clip.cropTop.toDouble())
+                put("cropRight", clip.cropRight.toDouble())
+                put("cropBottom", clip.cropBottom.toDouble())
             })
         }
         return JSONObject()
@@ -71,7 +75,11 @@ object OverlayStateCodec {
                     scale = item.optDouble("scale", 1.0).toFloat(),
                     rotation = item.optDouble("rotation", 0.0).toFloat(),
                     opacity = item.optDouble("opacity", 1.0).toFloat(),
-                    volume = item.optDouble("volume", 1.0).toFloat()
+                    volume = item.optDouble("volume", 1.0).toFloat(),
+                    cropLeft = item.optDouble("cropLeft", 0.0).toFloat(),
+                    cropTop = item.optDouble("cropTop", 0.0).toFloat(),
+                    cropRight = item.optDouble("cropRight", 0.0).toFloat(),
+                    cropBottom = item.optDouble("cropBottom", 0.0).toFloat()
                 )
                 require(clip.startTimeMs >= 0L && clip.durationMs > 0L)
                 require(clip.sourceStartMs >= 0L && clip.sourceDurationMs > 0L)
@@ -84,9 +92,13 @@ object OverlayStateCodec {
                 clip.scale = clip.scale.coerceIn(0.05f, 10f)
                 clip.opacity = clip.opacity.coerceIn(0f, 1f)
                 clip.volume = clip.volume.coerceIn(0f, 2f)
+                clip.cropLeft = clip.cropLeft.coerceIn(0f, 0.9f)
+                clip.cropTop = clip.cropTop.coerceIn(0f, 0.9f)
+                clip.cropRight = clip.cropRight.coerceIn(0f, 0.9f)
+                clip.cropBottom = clip.cropBottom.coerceIn(0f, 0.9f)
                 clip.volume = clip.volume.coerceIn(0f, 2f)
                 require(clip.positionX.isFinite() && clip.positionY.isFinite())
-                require(clip.rotation.isFinite() && clip.scale.isFinite() && clip.opacity.isFinite() && clip.volume.isFinite())
+                require(clip.rotation.isFinite() && clip.scale.isFinite() && clip.opacity.isFinite() && clip.volume.isFinite() && clip.cropLeft.isFinite() && clip.cropTop.isFinite() && clip.cropRight.isFinite() && clip.cropBottom.isFinite())
                 require(restored.find(clip.id) == null) { "Duplicate overlay clip id" }
                 restored.clips.add(clip)
             }
