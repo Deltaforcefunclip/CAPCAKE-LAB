@@ -6880,23 +6880,11 @@ class MainActivity : AppCompatActivity() {
             if (overlayPlayer == null || overlayView == null) {
                 overlayPlayer?.release()
                 overlayView?.let(overlayVideoPreviewContainer::removeView)
-                overlayPlayer = ExoPlayer.Builder(this).build().apply {
-                    volume = clip.volume.coerceIn(0f, 2f)
-                    val item = MediaItem.Builder()
-                        .setUri(Uri.parse(clip.sourceUri))
-                        .setClippingConfiguration(
-                            MediaItem.ClippingConfiguration.Builder()
-                                .setStartPositionMs(clip.sourceStartMs.coerceAtLeast(0L))
-                                .setEndPositionMs(
-                                    (clip.sourceStartMs + clip.sourceDurationMs)
-                                        .coerceAtLeast(clip.sourceStartMs + 1L)
-                                )
-                                .build()
-                        )
-                        .build()
-                    setMediaItem(item)
-                    prepare()
-                }
+
+                // Pasang PlayerView/surface lebih dahulu sebelum prepare().
+                // Jika prepare dimulai tanpa surface, decoder dapat baru menyiapkan
+                // frame saat klip mulai diputar dan menyebabkan tersendat di awal.
+                overlayPlayer = ExoPlayer.Builder(this).build()
                 overlayView = (android.view.LayoutInflater.from(this)
                     .inflate(R.layout.preview_player_view, overlayVideoPreviewContainer, false) as PlayerView).apply {
                     useController = false
@@ -6913,6 +6901,22 @@ class MainActivity : AppCompatActivity() {
                 )
                 overlayVideoPreviewPlayers[clip.id] = overlayPlayer
                 overlayVideoPreviewViews[clip.id] = overlayView
+
+                val item = MediaItem.Builder()
+                    .setUri(Uri.parse(clip.sourceUri))
+                    .setClippingConfiguration(
+                        MediaItem.ClippingConfiguration.Builder()
+                            .setStartPositionMs(clip.sourceStartMs.coerceAtLeast(0L))
+                            .setEndPositionMs(
+                                (clip.sourceStartMs + clip.sourceDurationMs)
+                                    .coerceAtLeast(clip.sourceStartMs + 1L)
+                            )
+                            .build()
+                    )
+                    .build()
+                overlayPlayer.setMediaItem(item)
+                overlayPlayer.volume = clip.volume.coerceIn(0f, 2f)
+                overlayPlayer.prepare()
             }
 
             val localPosition = if (isActiveNow) (position - clip.startTimeMs).coerceIn(0L, clip.durationMs) else 0L
@@ -9594,12 +9598,19 @@ class MainActivity : AppCompatActivity() {
                     inputSizes.firstOrNull() ?: Size(1280, 720)
 
                 override fun getOverlaySettings(inputId: Int, presentationTimeUs: Long): OverlaySettings {
-                    val overlayClip = overlaySequenceClips[inputId]
-                        ?.firstOrNull { presentationTimeUs / 1000L in it.startTimeMs until it.endTimeMs }
+                    val sequenceClips = overlaySequenceClips[inputId]
+                    val timelinePositionMs = presentationTimeUs / 1000L
+                    // Pada beberapa jalur decoder, timestamp frame input dapat
+                    // sedikit berbeda dari timestamp timeline hasil clipping.
+                    // Jangan membuat seluruh video overlay transparan hanya karena
+                    // pencarian rentang waktu tidak menemukan kecocokan persis.
+                    val overlayClip = sequenceClips
+                        ?.firstOrNull { timelinePositionMs in it.startTimeMs until it.endTimeMs }
+                        ?: sequenceClips?.minByOrNull { abs(it.startTimeMs - timelinePositionMs) }
                     if (overlayClip == null) {
-                        return StaticOverlaySettings.Builder()
-                            .setAlphaScale(if (inputId == 0) 1f else 0f)
-                            .build()
+                        // Input 0 adalah video utama. Input video lain tetap terlihat
+                        // dengan pengaturan default jika metadata lane tidak tersedia.
+                        return StaticOverlaySettings.Builder().build()
                     }
                     val normalizedX = (overlayClip.positionX * 2f / frameWidth).coerceIn(-2f, 2f)
                     val normalizedY = (-overlayClip.positionY * 2f / frameHeight).coerceIn(-2f, 2f)
