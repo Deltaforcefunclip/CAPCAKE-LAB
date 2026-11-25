@@ -9785,9 +9785,14 @@ class MainActivity : AppCompatActivity() {
             // sequence overlay. Koordinat posisi dihitung terhadap ukuran input utama,
             // bukan ukuran view Android, agar resolusi ekspor tidak menggeser overlay.
             val mainVideoInputId = overlaySequenceClips.size
+            var mainVideoInputSize = Size(1280, 720)
             val compositorSettings = object : VideoCompositorSettings {
-                override fun getOutputSize(inputSizes: MutableList<Size>): Size =
-                    inputSizes.getOrNull(mainVideoInputId) ?: inputSizes.firstOrNull() ?: Size(1280, 720)
+                override fun getOutputSize(inputSizes: MutableList<Size>): Size {
+                    mainVideoInputSize = inputSizes.getOrNull(mainVideoInputId)
+                        ?: inputSizes.firstOrNull()
+                        ?: Size(1280, 720)
+                    return mainVideoInputSize
+                }
 
                 override fun getOverlaySettings(inputId: Int, presentationTimeUs: Long): OverlaySettings {
                     val sequenceClips = overlaySequenceClips[inputId]
@@ -9804,11 +9809,10 @@ class MainActivity : AppCompatActivity() {
                         // dengan pengaturan default jika metadata lane tidak tersedia.
                         return StaticOverlaySettings.Builder().build()
                     }
-                    val mainSize = inputSizes.getOrNull(mainVideoInputId) ?: Size(1280, 720)
                     val normalizedX = (overlayClip.positionX * 2f /
-                        mainSize.width.toFloat().coerceAtLeast(1f)).coerceIn(-2f, 2f)
+                        mainVideoInputSize.width.toFloat().coerceAtLeast(1f)).coerceIn(-2f, 2f)
                     val normalizedY = (-overlayClip.positionY * 2f /
-                        mainSize.height.toFloat().coerceAtLeast(1f)).coerceIn(-2f, 2f)
+                        mainVideoInputSize.height.toFloat().coerceAtLeast(1f)).coerceIn(-2f, 2f)
                     val overlayScale = (0.5f * overlayClip.scale).coerceIn(0.025f, 5f)
                     return StaticOverlaySettings.Builder()
                         .setAlphaScale(overlayClip.opacity.coerceIn(0f, 1f))
