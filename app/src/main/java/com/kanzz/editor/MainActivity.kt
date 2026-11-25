@@ -6399,6 +6399,10 @@ class MainActivity : AppCompatActivity() {
         var baseY = 0f
         var baseScale = 1f
         var baseRotation = 0f
+        var originalX = 0f
+        var originalY = 0f
+        var originalScale = 1f
+        var originalRotation = 0f
         var changed = false
         var undoSaved = false
 
@@ -6437,7 +6441,17 @@ class MainActivity : AppCompatActivity() {
             val clip = overlayClipManager.find(clipId) ?: return@setOnTouchListener false
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    // Jika layer lain sedang dipilih lewat timeline, jangan biarkan
+                    // layer di atasnya mencuri gestur. Ini memungkinkan memilih
+                    // dan mengedit layer bawah yang saling bertumpuk.
+                    if (selectedOverlayClipId != null && selectedOverlayClipId != clipId) {
+                        return@setOnTouchListener false
+                    }
                     selectedOverlayClipId = clipId
+                    originalX = clip.positionX
+                    originalY = clip.positionY
+                    originalScale = clip.scale
+                    originalRotation = clip.rotation
                     downX = event.rawX
                     downY = event.rawY
                     changed = false
@@ -6508,10 +6522,12 @@ class MainActivity : AppCompatActivity() {
                 }
                 MotionEvent.ACTION_CANCEL -> {
                     if (undoSaved) {
-                        clip.positionX = baseX
-                        clip.positionY = baseY
-                        clip.scale = baseScale
-                        clip.rotation = baseRotation
+                        // Cancel mengembalikan kondisi sebelum seluruh rangkaian,
+                        // termasuk jika jari berpindah dari drag ke pinch/rotate.
+                        clip.positionX = originalX
+                        clip.positionY = originalY
+                        clip.scale = originalScale
+                        clip.rotation = originalRotation
                         applyTransform(clip)
                     }
                     true
