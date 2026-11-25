@@ -107,7 +107,8 @@ class OverlayClipManagerTest {
         assertEquals(1500L, second.startTimeMs)
         assertEquals(500L, second.durationMs)
         assertFalse(manager.trim("b", -1L, 100L))
-        assertTrue(manager.trim("b", 1000L, 500L))
+        assertTrue(manager.trim("b", 1500L, 400L))
+        assertEquals(400L, second.durationMs)
     }
 
     @Test fun trimVideoUpdatesSourceRangeAndRejectsInvalidExtension() {
