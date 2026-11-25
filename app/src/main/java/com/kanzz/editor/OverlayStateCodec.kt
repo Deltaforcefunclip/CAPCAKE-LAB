@@ -67,6 +67,11 @@ object OverlayStateCodec {
                 )
                 require(clip.startTimeMs >= 0L && clip.durationMs > 0L)
                 require(clip.sourceStartMs >= 0L && clip.sourceDurationMs > 0L)
+                // Overlay video diputar 1x. Normalisasi payload lama yang durasi
+                // sumbernya berbeda agar posisi klip berikutnya tidak bergeser saat export.
+                if (clip.mediaType == OverlayClip.Type.VIDEO) {
+                    clip.sourceDurationMs = clip.durationMs
+                }
                 require(clip.trackIndex >= 0)
                 clip.scale = clip.scale.coerceIn(0.05f, 10f)
                 clip.opacity = clip.opacity.coerceIn(0f, 1f)
