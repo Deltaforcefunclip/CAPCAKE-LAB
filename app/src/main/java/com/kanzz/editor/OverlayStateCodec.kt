@@ -43,7 +43,13 @@ object OverlayStateCodec {
 
         val restored = OverlayClipManager()
         try {
-            val array = JSONObject(json).getJSONArray("clips")
+            val payload = JSONObject(json)
+            // Payload versi lebih baru mungkin memiliki field atau semantik yang
+            // belum dipahami aplikasi ini. Tolak secara atomik, jangan menimpa
+            // project dengan hasil restore parsial.
+            val payloadVersion = payload.optInt("version", 1)
+            require(payloadVersion in 1..VERSION) { "Unsupported overlay state version" }
+            val array = payload.getJSONArray("clips")
             for (index in 0 until array.length()) {
                 val item = array.getJSONObject(index)
                 val type = OverlayClip.Type.valueOf(item.getString("mediaType"))
