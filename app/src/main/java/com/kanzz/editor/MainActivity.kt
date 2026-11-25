@@ -6738,15 +6738,27 @@ class MainActivity : AppCompatActivity() {
         val active = overlayClipManager.clips.filter {
             it.mediaType == OverlayClip.Type.VIDEO &&
                 position >= it.startTimeMs && position < it.endTimeMs
-        }
+        }.sortedBy { it.trackIndex }
         val activeIds = active.map { it.id }.toSet()
-        val staleIds = overlayVideoPreviewPlayers.keys.filter { it !in activeIds }
+        // Siapkan decoder layer berikutnya sebelum playhead tiba agar layer kedua
+        // tidak baru mulai buffering saat layer pertama sudah berjalan.
+        val upcoming = if (player.isPlaying) {
+            overlayClipManager.clips.filter {
+                it.mediaType == OverlayClip.Type.VIDEO &&
+                    it.startTimeMs > position &&
+                    it.startTimeMs - position <= 1_000L
+            }
+        } else emptyList()
+        val desiredClips = (active + upcoming).distinctBy { it.id }
+        val desiredIds = desiredClips.map { it.id }.toSet()
+        val staleIds = overlayVideoPreviewPlayers.keys.filter { it !in desiredIds }
         staleIds.forEach { id ->
             overlayVideoPreviewPlayers.remove(id)?.release()
             overlayVideoPreviewViews.remove(id)?.let(overlayVideoPreviewContainer::removeView)
         }
 
-        active.forEach { clip ->
+        desiredClips.forEach { clip ->
+            val isActiveNow = clip.id in activeIds
             var overlayPlayer = overlayVideoPreviewPlayers[clip.id]
             var overlayView = overlayVideoPreviewViews[clip.id]
             if (overlayPlayer == null || overlayView == null) {
@@ -6787,7 +6799,7 @@ class MainActivity : AppCompatActivity() {
                 overlayVideoPreviewViews[clip.id] = overlayView
             }
 
-            val localPosition = (position - clip.startTimeMs).coerceIn(0L, clip.durationMs)
+            val localPosition = if (isActiveNow) (position - clip.startTimeMs).coerceIn(0L, clip.durationMs) else 0L
             overlayPlayer.volume = clip.volume.coerceIn(0f, 2f)
             val drift = abs(overlayPlayer.currentPosition - localPosition)
             val seekThreshold = if (player.isPlaying) 80L else 45L
@@ -6798,7 +6810,8 @@ class MainActivity : AppCompatActivity() {
             ) {
                 overlayPlayer.seekTo(localPosition)
             }
-            overlayPlayer.playWhenReady = player.isPlaying
+            overlayPlayer.playWhenReady = isActiveNow && player.isPlaying
+            overlayView.visibility = if (isActiveNow) View.VISIBLE else View.GONE
             overlayView.alpha = clip.opacity.coerceIn(0f, 1f)
             overlayView.scaleX = (0.5f * clip.scale).coerceIn(0.025f, 5f)
             overlayView.scaleY = (0.5f * clip.scale).coerceIn(0.025f, 5f)
@@ -6808,7 +6821,7 @@ class MainActivity : AppCompatActivity() {
             // Urutan child harus mengikuti lane timeline, bukan urutan saat player
             // pertama kali dibuat. Klip lane bawah yang baru aktif tidak boleh
             // menutupi klip lane atas yang player-nya sudah lebih dulu ada.
-            overlayView.bringToFront()
+            if (isActiveNow) overlayView.bringToFront()
         }
     }
 
@@ -9335,6 +9348,56 @@ class MainActivity : AppCompatActivity() {
                     val inputId = sequences.size
                     sequences.add(sequenceBuilder.build())
                     overlaySequenceClips[inputId] = ordered
+                }
+
+            // Audio asli video overlay diekspor sebagai sequence audio terpisah.
+            // Video compositor tetap menerima sequence video-only, sedangkan setiap
+            // lane audio dapat bercampur dengan audio utama dan lane audio lainnya.
+            overlayClipManager.clips
+                .filter { it.mediaType == OverlayClip.Type.VIDEO && it.startTimeMs < videoClipManager.durationMs }
+                .groupBy { it.trackIndex }
+                .toSortedMap()
+                .values
+                .forEach { laneClips ->
+                    val audioSequence = EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_AUDIO))
+                    var audioCursorMs = 0L
+                    laneClips.sortedBy { it.startTimeMs }.forEach { sourceClip ->
+                        val clipDuration = minOf(sourceClip.durationMs, videoClipManager.durationMs - sourceClip.startTimeMs)
+                        if (clipDuration <= 0L) return@forEach
+                        if (sourceClip.startTimeMs > audioCursorMs) {
+                            audioSequence.addGap((sourceClip.startTimeMs - audioCursorMs) * 1000L)
+                        }
+                        val audioItem = MediaItem.Builder()
+                            .setUri(Uri.parse(sourceClip.sourceUri))
+                            .setClippingConfiguration(
+                                MediaItem.ClippingConfiguration.Builder()
+                                    .setStartPositionMs(sourceClip.sourceStartMs.coerceAtLeast(0L))
+                                    .setEndPositionMs((sourceClip.sourceStartMs + clipDuration)
+                                        .coerceAtLeast(sourceClip.sourceStartMs + 1L))
+                                    .build()
+                            )
+                            .build()
+                        val volumeProcessors = buildList<AudioProcessor> {
+                            if (abs(sourceClip.volume - 1f) > 0.001f) {
+                                val mixer = ChannelMixingAudioProcessor()
+                                for (channelCount in 1..6) {
+                                    mixer.putChannelMixingMatrix(
+                                        ChannelMixingMatrix.createForConstantPower(channelCount, channelCount)
+                                            .scaleBy(sourceClip.volume.coerceIn(0f, 2f))
+                                    )
+                                }
+                                add(mixer)
+                            }
+                        }
+                        audioSequence.addItem(
+                            EditedMediaItem.Builder(audioItem)
+                                .setRemoveVideo(true)
+                                .setEffects(Effects(volumeProcessors, emptyList()))
+                                .build()
+                        )
+                        audioCursorMs = maxOf(audioCursorMs, sourceClip.startTimeMs + clipDuration)
+                    }
+                    sequences.add(audioSequence.build())
                 }
 
             // Setiap layer audio menjadi sequence terpisah agar beberapa layer dapat
