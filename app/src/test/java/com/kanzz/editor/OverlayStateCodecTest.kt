@@ -61,6 +61,17 @@ class OverlayStateCodecTest {
         assertEquals(1500L, clip.sourceDurationMs)
     }
 
+    @Test fun restoreNormalizesLegacyVideoSourceDurationToTimelineDuration() {
+        val json = """{"clips":[{"id":"legacy-video","sourceUri":"content://video","mediaType":"VIDEO","startTimeMs":500,"durationMs":1500,"sourceStartMs":200,"sourceDurationMs":1499}]}"""
+        val restored = OverlayClipManager()
+
+        assertTrue(OverlayStateCodec.restore(json, restored))
+        val clip = restored.find("legacy-video")!!
+        assertEquals(1500L, clip.durationMs)
+        assertEquals(1500L, clip.sourceDurationMs)
+        assertEquals(200L, clip.sourceStartMs)
+    }
+
     @Test fun corruptOrIncompletePayloadDoesNotClearExistingManager() {
         val restored = manager()
         val before = OverlayStateCodec.encode(restored)
