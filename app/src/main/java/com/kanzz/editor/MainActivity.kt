@@ -8870,12 +8870,26 @@ class MainActivity : AppCompatActivity() {
             // dan antar-klip menjaga posisi absolut klip pada timeline project.
             val overlaySequenceClips = mutableMapOf<Int, List<OverlayClip>>()
             overlayClipManager.clips
-                .filter { it.mediaType == OverlayClip.Type.VIDEO }
+                .filter {
+                    it.mediaType == OverlayClip.Type.VIDEO &&
+                        it.startTimeMs < videoClipManager.durationMs
+                }
                 .groupBy { it.trackIndex }
                 .toSortedMap()
                 .values
                 .forEach { laneClips ->
+                    // Export tidak boleh menjadi lebih panjang daripada main track.
+                    // Potong klip overlay yang melewati akhir video utama.
                     val ordered = laneClips.sortedBy { it.startTimeMs }
+                        .mapNotNull { overlay ->
+                            val remainingMs = videoClipManager.durationMs - overlay.startTimeMs
+                            val exportDurationMs = minOf(overlay.durationMs, remainingMs)
+                            if (exportDurationMs <= 0L) null else overlay.copy(
+                                durationMs = exportDurationMs,
+                                sourceDurationMs = exportDurationMs
+                            )
+                        }
+                    if (ordered.isEmpty()) return@forEach
                     val sequenceBuilder = EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_VIDEO))
                     var cursorMs = 0L
                     ordered.forEach { overlay ->
@@ -8888,7 +8902,7 @@ class MainActivity : AppCompatActivity() {
                                 MediaItem.ClippingConfiguration.Builder()
                                     .setStartPositionMs(overlay.sourceStartMs.coerceAtLeast(0L))
                                     .setEndPositionMs(
-                                        (overlay.sourceStartMs + overlay.sourceDurationMs)
+                                        (overlay.sourceStartMs + overlay.durationMs)
                                             .coerceAtLeast(overlay.sourceStartMs + 1L)
                                     )
                                     .build()
