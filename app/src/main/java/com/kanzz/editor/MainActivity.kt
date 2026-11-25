@@ -2255,6 +2255,11 @@ class MainActivity : AppCompatActivity() {
                         (thisTextTracksContainer.getChildAt(i) as? TextTrackView)?.select(null)
                     }
                 }
+                if (::thisOverlayTracksContainer.isInitialized) {
+                    for (i in 0 until thisOverlayTracksContainer.childCount) {
+                        (thisOverlayTracksContainer.getChildAt(i) as? OverlayTrackView)?.select(null)
+                    }
+                }
                 selectedVideoClipId = tappedClip?.id
                 selectedOverlayClipId = null
                 videoSelected = tappedClip != null
@@ -2555,6 +2560,7 @@ class MainActivity : AppCompatActivity() {
                                 selectedAudioClipId = null
                                 selectedTextClipId = null
                                 selectedEffectClipId = null
+                                selectedOverlayClipId = null
                                 videoSelected = false
                                 timeline.selectClip(null)
                                 timeline.updateSelection(false)
@@ -2567,6 +2573,11 @@ class MainActivity : AppCompatActivity() {
                                 if (::thisEffectTracksContainer.isInitialized) {
                                     for (i in 0 until thisEffectTracksContainer.childCount) {
                                         (thisEffectTracksContainer.getChildAt(i) as? EffectTrackView)?.select(null)
+                                    }
+                                }
+                                if (::thisOverlayTracksContainer.isInitialized) {
+                                    for (i in 0 until thisOverlayTracksContainer.childCount) {
+                                        (thisOverlayTracksContainer.getChildAt(i) as? OverlayTrackView)?.select(null)
                                     }
                                 }
                                 playerView.foreground = null
@@ -3651,6 +3662,7 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     "Overlay", "Sticker" -> {
+                        val switchingToOverlay = pair.second == "Overlay" && activeLayerGroup != "OVERLAY"
                         activeLayerGroup = if (pair.second == "Overlay") "OVERLAY" else "STICKER"
                         selectedVideoClipId = null
                         videoSelected = false
@@ -3658,9 +3670,19 @@ class MainActivity : AppCompatActivity() {
                         selectedTextClipId = null
                         selectedEffectClipId = null
                         selectedOverlayClipId = null
+                        if (::thisOverlayTracksContainer.isInitialized) {
+                            for (i in 0 until thisOverlayTracksContainer.childCount) {
+                                (thisOverlayTracksContainer.getChildAt(i) as? OverlayTrackView)?.select(null)
+                            }
+                        }
                         updateLayerGroupVisibility()
                         updateToolMenu()
-                        if (pair.second == "Overlay") showOverlayPicker()
+                        // Jika Overlay sudah berisi klip dan sedang diminimalkan,
+                        // tombol hanya membuka kembali layer. Picker dibuka saat
+                        // layer masih kosong atau tombol Overlay ditekan lagi.
+                        if (pair.second == "Overlay" &&
+                            (overlayClipManager.clips.isEmpty() || !switchingToOverlay)
+                        ) showOverlayPicker()
                     }
 
                     "Pisah" -> {
@@ -5106,6 +5128,24 @@ class MainActivity : AppCompatActivity() {
                     for (i in 0 until thisOverlayTracksContainer.childCount) {
                         (thisOverlayTracksContainer.getChildAt(i) as? OverlayTrackView)?.select(clip?.id)
                     }
+                    if (clip != null) {
+                        // Seleksi Overlay memindahkan playhead ke awal klip agar
+                        // preview dan posisi edit langsung mengikuti klip terpilih.
+                        if (player.isPlaying) {
+                            player.pause()
+                            updatePlayButton()
+                        }
+                        val target = clip.startTimeMs.coerceIn(0L, videoClipManager.durationMs)
+                        timelineController.setPosition(target)
+                        pendingScrubPositionMs = target
+                        isTimelineScrubbing = true
+                        player.setScrubbingModeEnabled(true)
+                        seekTimelinePosition(target)
+                        handler.removeCallbacks(scrubFinishRunnable)
+                        handler.postDelayed(scrubFinishRunnable, 140L)
+                        timeline.invalidate()
+                        updateTime()
+                    }
                     updateToolMenu()
                 },
                 onMove = { clip, newStart ->
@@ -5699,8 +5739,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun getLibraryTypeface(fileName: String, bold: Boolean): Typeface {
-        if (fileName == "Default" || fileName == "Sans" || fileName.isBlank()) return Typeface.create("sans-serif", if (bold) Typeface.BOLD else Typeface.NORMAL)
-        if (fileName == "Serif" || fileName == "Monospace") return Typeface.create(fileName.lowercase(Locale.ROOT), if (bold) Typeface.BOLD else Typeface.NORMAL)
+        val family = when (fileName) {
+            "Default", "Sans", "Sans Serif", "" -> "sans-serif"
+            "Roboto" -> "sans-serif"
+            "Roboto Condensed" -> "sans-serif-condensed"
+            "Sans Light" -> "sans-serif-light"
+            "Sans Thin" -> "sans-serif-thin"
+            "Sans Medium" -> "sans-serif-medium"
+            "Sans Black" -> "sans-serif-black"
+            "Serif" -> "serif"
+            "Monospace" -> "monospace"
+            "Casual" -> "casual"
+            "Cursive" -> "cursive"
+            "Small Caps" -> "sans-serif-smallcaps"
+            else -> null
+        }
+        if (family != null) return Typeface.create(family, if (bold) Typeface.BOLD else Typeface.NORMAL)
         val file = File(fontLibraryDirectory(), fileName)
         if (!file.exists()) return Typeface.DEFAULT
         return runCatching { Typeface.createFromFile(file) }.getOrDefault(Typeface.DEFAULT).let { if (bold) Typeface.create(it, Typeface.BOLD) else it }
@@ -5836,7 +5890,11 @@ class MainActivity : AppCompatActivity() {
         fun refresh() {
             val previousScrollY = scroll.scrollY
             grid.removeAllViews()
-            val builtIns = listOf("Default", "Sans", "Serif", "Monospace")
+            val builtIns = listOf(
+                "Default", "Sans", "Sans Serif", "Roboto", "Roboto Condensed",
+                "Sans Light", "Sans Thin", "Sans Medium", "Sans Black",
+                "Serif", "Monospace", "Casual", "Cursive", "Small Caps"
+            )
             val custom = fontLibraryDirectory().listFiles()
                 ?.filter { it.isFile && (it.extension.equals("ttf", true) || it.extension.equals("otf", true)) }
                 ?.sortedBy { it.nameWithoutExtension.lowercase(Locale.ROOT) } ?: emptyList()
