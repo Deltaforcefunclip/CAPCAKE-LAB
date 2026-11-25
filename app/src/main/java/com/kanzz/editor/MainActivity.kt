@@ -9461,15 +9461,22 @@ class MainActivity : AppCompatActivity() {
                                     .build()
                             )
                             .build()
+                        // Batasi crop berpasangan agar area yang tersisa selalu valid.
+                        // Nilai tiap sisi berasal dari kontrol UI dan bisa jika dijumlahkan
+                        // saling menghabiskan seluruh frame.
+                        val cropLeft = overlay.cropLeft.coerceIn(0f, 0.95f)
+                        val cropRight = overlay.cropRight.coerceIn(0f, 0.95f - cropLeft)
+                        val cropTop = overlay.cropTop.coerceIn(0f, 0.95f)
+                        val cropBottom = overlay.cropBottom.coerceIn(0f, 0.95f - cropTop)
                         val overlayVideoEffects = buildList<androidx.media3.common.Effect> {
-                            if (overlay.cropLeft > 0.001f || overlay.cropTop > 0.001f ||
-                                overlay.cropRight > 0.001f || overlay.cropBottom > 0.001f
+                            if (cropLeft > 0.001f || cropTop > 0.001f ||
+                                cropRight > 0.001f || cropBottom > 0.001f
                             ) {
                                 add(Crop(
-                                    -1f + overlay.cropLeft,
-                                    1f - overlay.cropRight,
-                                    -1f + overlay.cropBottom,
-                                    1f - overlay.cropTop
+                                    -1f + cropLeft,
+                                    1f - cropRight,
+                                    -1f + cropBottom,
+                                    1f - cropTop
                                 ))
                             }
                         }
@@ -9479,6 +9486,12 @@ class MainActivity : AppCompatActivity() {
                             .build()
                         sequenceBuilder.addItem(overlayEditedItem)
                         cursorMs = overlay.endTimeMs
+                    }
+                    // Semua sequence video harus memiliki rentang waktu project yang sama.
+                    // Padding akhir mencegah input compositor berakhir lebih cepat daripada
+                    // video utama ketika klip overlay selesai sebelum timeline berakhir.
+                    if (cursorMs < videoClipManager.durationMs) {
+                        sequenceBuilder.addGap((videoClipManager.durationMs - cursorMs) * 1000L)
                     }
                     val inputId = sequences.size
                     sequences.add(sequenceBuilder.build())
