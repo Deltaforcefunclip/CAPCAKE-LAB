@@ -8358,6 +8358,9 @@ class MainActivity : AppCompatActivity() {
         )
         // Decode sekali sebelum Transformer berjalan. Callback CanvasOverlay hanya
         // membaca snapshot immutable dan tidak mengakses ContentResolver/View.
+        val imageOverlayClipCount = overlayClipManager.clips.count {
+            it.mediaType == OverlayClip.Type.IMAGE
+        }
         val exportImageOverlays = overlayClipManager.clips
             .filter { it.mediaType == OverlayClip.Type.IMAGE }
             .mapNotNull { overlay ->
@@ -8377,6 +8380,15 @@ class MainActivity : AppCompatActivity() {
                     opacity = overlay.opacity.coerceIn(0f, 1f)
                 )
             }
+        // Jangan diam-diam mengekspor project tanpa satu atau beberapa image overlay.
+        if (exportImageOverlays.size != imageOverlayClipCount) {
+            exportImageOverlays.forEach { if (!it.bitmap.isRecycled) it.bitmap.recycle() }
+            showMessage("Ada gambar Overlay yang tidak dapat dibaca. Periksa file sumbernya.")
+            return
+        }
+        fun releaseExportImageOverlays() {
+            exportImageOverlays.forEach { if (!it.bitmap.isRecycled) it.bitmap.recycle() }
+        }
 
         val editedItems = try {
             videoClipManager.clips.map { clip ->
@@ -8738,6 +8750,7 @@ class MainActivity : AppCompatActivity() {
                     .build()
             }
         } catch (error: Exception) {
+            releaseExportImageOverlays()
             showMessage("Tidak dapat menyiapkan klip ekspor: ${error.message}")
             return
         }
@@ -8774,6 +8787,7 @@ class MainActivity : AppCompatActivity() {
 
         val listener = object : Transformer.Listener {
             override fun onCompleted(composition: Composition, exportResult: ExportResult) {
+                releaseExportImageOverlays()
                 exportTransformer = null
                 handler.removeCallbacks(exportProgressRunnable)
                 exportProgressBar?.progress = 100
@@ -8835,6 +8849,7 @@ class MainActivity : AppCompatActivity() {
                 exportResult: ExportResult,
                 exportException: ExportException
             ) {
+                releaseExportImageOverlays()
                 exportTransformer = null
                 handler.removeCallbacks(exportProgressRunnable)
                 output.delete()
@@ -8985,6 +9000,7 @@ class MainActivity : AppCompatActivity() {
             transformer.start(composition, output.absolutePath)
             handler.post(exportProgressRunnable)
         } catch (error: Exception) {
+            releaseExportImageOverlays()
             exportTransformer = null
             handler.removeCallbacks(exportProgressRunnable)
             output.delete()
