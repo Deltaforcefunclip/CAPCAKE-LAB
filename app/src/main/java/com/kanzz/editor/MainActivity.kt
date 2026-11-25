@@ -5114,22 +5114,27 @@ class MainActivity : AppCompatActivity() {
                         (thisOverlayTracksContainer.getChildAt(i) as? OverlayTrackView)?.select(clip?.id)
                     }
                     if (clip != null) {
-                        // Seleksi Overlay memindahkan playhead ke awal klip agar
-                        // preview dan posisi edit langsung mengikuti klip terpilih.
-                        if (player.isPlaying) {
-                            player.pause()
-                            updatePlayButton()
+                        // Ikuti perilaku timeline lain: mempertahankan playhead
+                        // jika sudah berada di dalam rentang klip yang dipilih.
+                        // Hanya pindah ke awal klip jika playhead berada di luar rentangnya.
+                        val currentPosition = currentTimelinePosition()
+                        val clipEnd = clip.startTimeMs + clip.durationMs
+                        if (currentPosition < clip.startTimeMs || currentPosition >= clipEnd) {
+                            if (player.isPlaying) {
+                                player.pause()
+                                updatePlayButton()
+                            }
+                            val target = clip.startTimeMs.coerceIn(0L, videoClipManager.durationMs)
+                            timelineController.setPosition(target)
+                            pendingScrubPositionMs = target
+                            isTimelineScrubbing = true
+                            player.setScrubbingModeEnabled(true)
+                            seekTimelinePosition(target)
+                            handler.removeCallbacks(scrubFinishRunnable)
+                            handler.postDelayed(scrubFinishRunnable, 140L)
+                            timeline.invalidate()
+                            updateTime()
                         }
-                        val target = clip.startTimeMs.coerceIn(0L, videoClipManager.durationMs)
-                        timelineController.setPosition(target)
-                        pendingScrubPositionMs = target
-                        isTimelineScrubbing = true
-                        player.setScrubbingModeEnabled(true)
-                        seekTimelinePosition(target)
-                        handler.removeCallbacks(scrubFinishRunnable)
-                        handler.postDelayed(scrubFinishRunnable, 140L)
-                        timeline.invalidate()
-                        updateTime()
                     }
                     updateToolMenu()
                 },
