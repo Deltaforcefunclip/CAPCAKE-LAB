@@ -156,7 +156,6 @@ class OverlayClipManager {
     fun canTrim(id: String, newStartTimeMs: Long, newDurationMs: Long): Boolean {
         val clip = find(id) ?: return false
         if (newStartTimeMs < clip.startTimeMs || newDurationMs < 1L) return false
-        val oldEnd = clip.endTimeMs
         val newEnd = newStartTimeMs + newDurationMs
         if (newEnd > oldEnd) return false
         return clips.none { other ->
@@ -171,7 +170,6 @@ class OverlayClipManager {
         val clip = find(id) ?: return false
         if (!canTrim(id, newStartTimeMs, newDurationMs)) return false
         val oldStart = clip.startTimeMs
-        val oldDuration = clip.durationMs
         val oldSourceStart = clip.sourceStartMs
         val oldSourceDuration = clip.sourceDurationMs
         val oldEnd = clip.endTimeMs
