@@ -6855,13 +6855,14 @@ class MainActivity : AppCompatActivity() {
                 position >= it.startTimeMs && position < it.endTimeMs
         }.sortedBy { it.trackIndex }
         val activeIds = active.map { it.id }.toSet()
-        // Siapkan decoder layer berikutnya sebelum playhead tiba agar layer kedua
-        // tidak baru mulai buffering saat layer pertama sudah berjalan.
-        val upcoming = if (player.isPlaying) {
+        // Siapkan decoder lebih awal, termasuk saat player utama masih buffering.
+        // Jeda 2,5 detik memberi perangkat waktu menyiapkan decoder layer berikutnya
+        // sehingga overlay yang mulai berdekatan tidak terlambat muncul.
+        val upcoming = if (player.playWhenReady) {
             overlayClipManager.clips.filter {
                 it.mediaType == OverlayClip.Type.VIDEO &&
                     it.startTimeMs > position &&
-                    it.startTimeMs - position <= 1_000L
+                    it.startTimeMs - position <= 2_500L
             }
         } else emptyList()
         val desiredClips = (active + upcoming).distinctBy { it.id }
