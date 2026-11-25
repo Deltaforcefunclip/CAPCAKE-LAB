@@ -3308,7 +3308,7 @@ class MainActivity : AppCompatActivity() {
         val names = if (selectedEffectClipId != null) {
             listOf("⚙" to "Atur", "◐" to "Opasitas", "✂" to "Potong", "▣" to "Duplikat", "⌫" to "Hapus")
         } else if (selectedOverlayClipId != null) {
-            listOf("⚙" to "Atur", "◐" to "Opasitas", "✂" to "Potong", "▣" to "Duplikat", "⌫" to "Hapus")
+            listOf("⚙" to "Atur", "⇅" to "Track", "◐" to "Opasitas", "✂" to "Potong", "▣" to "Duplikat", "⌫" to "Hapus")
         } else if (selectedTextClipId != null) {
             listOf(
                 "✎" to "Edit Text", "Aa" to "Font", "▣" to "Salin",
@@ -3471,6 +3471,9 @@ class MainActivity : AppCompatActivity() {
                     "Warna" -> showTextColorPicker()
                     "Gaya" -> toggleSelectedTextStyle()
                     "Animasi" -> Toast.makeText(this, "Pengaturan animasi teks akan ditambahkan berikutnya.", Toast.LENGTH_SHORT).show()
+                    "Track" -> {
+                        overlayClipManager.find(selectedOverlayClipId)?.let { showOverlayTrackDialog(it) }
+                    }
                     "Opasitas" -> {
                         if (selectedOverlayClipId != null) {
                             overlayClipManager.find(selectedOverlayClipId)?.let { showOverlayOpacityDialog(it) }
@@ -3955,6 +3958,31 @@ class MainActivity : AppCompatActivity() {
             root.translationY = root.height.toFloat().coerceAtLeast(dp(220).toFloat())
             root.animate().translationY(0f).setDuration(260L).setInterpolator(DecelerateInterpolator()).start()
         }
+    }
+
+    private fun showOverlayTrackDialog(clip: OverlayClip) {
+        val lastLane = overlayClipManager.clips.maxOfOrNull { it.trackIndex } ?: clip.trackIndex
+        val options = (0..lastLane).map { "Track ${it + 1}" } + "Track baru di bawah"
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Pindahkan Overlay")
+            .setItems(options.toTypedArray()) { _, which ->
+                pushUndoSnapshot()
+                val moved = if (which == options.lastIndex) {
+                    overlayClipManager.moveClipToNewBottomLane(clip.id)
+                } else {
+                    overlayClipManager.moveClipToLane(clip.id, which)
+                }
+                if (moved) {
+                    refreshOverlayTracks()
+                    saveCurrentProject()
+                    updateToolMenu()
+                } else {
+                    undoStack.removeLastOrNull()
+                    showMessage("Track tujuan sudah berisi klip pada rentang waktu tersebut.")
+                }
+            }
+            .setNegativeButton("Batal", null)
+            .show()
     }
 
     private fun showOverlayOpacityDialog(clip: OverlayClip) {
