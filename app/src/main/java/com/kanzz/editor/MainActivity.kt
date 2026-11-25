@@ -2564,23 +2564,7 @@ class MainActivity : AppCompatActivity() {
                                 videoSelected = false
                                 timeline.selectClip(null)
                                 timeline.updateSelection(false)
-                                clearAudioTrackSelection()
-                                if (::thisTextTracksContainer.isInitialized) {
-                                    for (i in 0 until thisTextTracksContainer.childCount) {
-                                        (thisTextTracksContainer.getChildAt(i) as? TextTrackView)?.select(null)
-                                    }
-                                }
-                                if (::thisEffectTracksContainer.isInitialized) {
-                                    for (i in 0 until thisEffectTracksContainer.childCount) {
-                                        (thisEffectTracksContainer.getChildAt(i) as? EffectTrackView)?.select(null)
-                                    }
-                                }
-                                if (::thisOverlayTracksContainer.isInitialized) {
-                                    for (i in 0 until thisOverlayTracksContainer.childCount) {
-                                        (thisOverlayTracksContainer.getChildAt(i) as? OverlayTrackView)?.select(null)
-                                    }
-                                }
-                                playerView.foreground = null
+                                clearAllTrackVisualSelections()
                                 updateTextPreview()
                                 updateToolMenu()
                             }
@@ -3613,6 +3597,7 @@ class MainActivity : AppCompatActivity() {
                         selectedEffectClipId = null
                         selectedVideoClipId = null
                         videoSelected = false
+                        clearAllTrackVisualSelections()
                         updateLayerGroupVisibility()
                         updateToolMenu()
                         // Saat berpindah kelompok, tampilkan layer yang sudah ada.
@@ -3630,6 +3615,7 @@ class MainActivity : AppCompatActivity() {
                         selectedAudioClipId = null
                         selectedVideoClipId = null
                         videoSelected = false
+                        clearAllTrackVisualSelections()
                         updateLayerGroupVisibility()
                         updateToolMenu()
                         // Jika berpindah ke kelompok yang sudah berisi clip,
@@ -3646,6 +3632,7 @@ class MainActivity : AppCompatActivity() {
                         selectedEffectClipId = null
                         selectedVideoClipId = null
                         videoSelected = false
+                        clearAllTrackVisualSelections()
                         updateLayerGroupVisibility()
                         updateToolMenu()
                         // Keyboard/editor otomatis muncul hanya jika belum ada clip Text,
@@ -3670,11 +3657,7 @@ class MainActivity : AppCompatActivity() {
                         selectedTextClipId = null
                         selectedEffectClipId = null
                         selectedOverlayClipId = null
-                        if (::thisOverlayTracksContainer.isInitialized) {
-                            for (i in 0 until thisOverlayTracksContainer.childCount) {
-                                (thisOverlayTracksContainer.getChildAt(i) as? OverlayTrackView)?.select(null)
-                            }
-                        }
+                        clearAllTrackVisualSelections()
                         updateLayerGroupVisibility()
                         updateToolMenu()
                         // Jika Overlay sudah berisi klip dan sedang diminimalkan,
@@ -7248,6 +7231,18 @@ class MainActivity : AppCompatActivity() {
         for (i in 0 until thisOverlayTracksContainer.childCount) {
             (thisOverlayTracksContainer.getChildAt(i) as? OverlayTrackView)?.select(null)
         }
+    }
+
+    private fun clearAllTrackVisualSelections() {
+        clearAudioTrackSelection()
+        clearTextTrackSelection()
+        clearEffectTrackSelection()
+        clearOverlayTrackSelection()
+        if (::timeline.isInitialized) {
+            timeline.selectClip(null)
+            timeline.updateSelection(false)
+        }
+        if (::playerView.isInitialized) playerView.foreground = null
     }
 
     private fun selectAudioClip(clipId: String?) {
