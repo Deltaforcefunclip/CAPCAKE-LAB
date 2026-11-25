@@ -9476,9 +9476,9 @@ class MainActivity : AppCompatActivity() {
                 .forEach { laneClips ->
                     val audioSequence = EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_AUDIO))
                     var audioCursorMs = 0L
-                    laneClips.sortedBy { it.startTimeMs }.forEach { sourceClip ->
+                    laneClips.sortedBy { it.startTimeMs }.forEach sourceClipLoop@ { sourceClip ->
                         val clipDuration = minOf(sourceClip.durationMs, videoClipManager.durationMs - sourceClip.startTimeMs)
-                        if (clipDuration <= 0L) return@forEach
+                        if (clipDuration <= 0L) return@sourceClipLoop
                         if (sourceClip.startTimeMs > audioCursorMs) {
                             audioSequence.addGap((sourceClip.startTimeMs - audioCursorMs) * 1000L)
                         }
