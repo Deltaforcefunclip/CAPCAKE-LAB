@@ -4349,7 +4349,11 @@ class MainActivity : AppCompatActivity() {
                 saveCurrentProject()
                 refreshOverlayTracks()
             }
-            preview.removeView(guide)
+            // Hapus dari parent aktual agar garis tidak tertinggal bila
+            // preview container berubah selama mode crop berlangsung.
+            guide.visibility = View.GONE
+            (guide.parent as? android.view.ViewGroup)?.removeView(guide)
+            preview.invalidate()
             activeOverlayCropClipId = null
             activeOverlayCropFinish = null
             overlayCropBackCallback?.remove()
@@ -9654,13 +9658,15 @@ class MainActivity : AppCompatActivity() {
                                 ))
                             }
                         }
-                        val overlayEditedBuilder = EditedMediaItem.Builder(overlayMediaItem)
+                        // Jangan memaksa FPS overlay mengikuti FPS output.
+                        // Compositor akan mempertahankan frame overlay terakhir sampai
+                        // frame berikutnya; video 30 FPS tetap dapat tampil pada output 60 FPS.
+                        // setFrameRate(60) pada sumber 30 FPS memicu kegagalan konversi
+                        // pada sebagian decoder/perangkat MediaTek.
+                        val overlayEditedItem = EditedMediaItem.Builder(overlayMediaItem)
                             .setRemoveAudio(true)
                             .setEffects(Effects(emptyList(), overlayVideoEffects))
-                        if (exportFrameRate != null) {
-                            overlayEditedBuilder.setFrameRate(exportFrameRate.toInt().coerceAtLeast(1))
-                        }
-                        val overlayEditedItem = overlayEditedBuilder.build()
+                            .build()
                         sequenceBuilder.addItem(overlayEditedItem)
                         cursorMs = overlay.endTimeMs
                     }
@@ -9835,11 +9841,36 @@ class MainActivity : AppCompatActivity() {
                         previewContentW.coerceAtLeast(1f)).coerceIn(-2f, 2f)
                     val normalizedY = (-overlayClip.positionY * 2f /
                         previewContentH.coerceAtLeast(1f)).coerceIn(-2f, 2f)
-                    // Skala sama persis dengan PlayerView preview (0.5 * clip.scale).
-                    val overlayScale = (0.5f * overlayClip.scale).coerceIn(0.025f, 5f)
+                    // PlayerView preview diskalakan 50% dari viewport, tetapi
+                    // ukuran sumber overlay bisa berbeda dari ukuran video utama.
+                    // Hitung skala per sumbu dari ukuran media yang benar-benar masuk
+                    // compositor agar ukuran visual preview dan hasil ekspor sebanding.
+                    val overlayInputSize = compositorInputSizes.getOrNull(inputId)
+                        ?: mainVideoInputSize
+                    val overlayAspect = overlayInputSize.width.toFloat() /
+                        overlayInputSize.height.toFloat().coerceAtLeast(1f)
+                    val previewViewportAspect = previewW / previewH
+                    val fittedOverlayW: Float
+                    val fittedOverlayH: Float
+                    if (overlayAspect >= previewViewportAspect) {
+                        fittedOverlayW = previewW
+                        fittedOverlayH = previewW / overlayAspect
+                    } else {
+                        fittedOverlayH = previewH
+                        fittedOverlayW = previewH * overlayAspect
+                    }
+                    val scaleFactor = (0.5f * overlayClip.scale).coerceIn(0.025f, 5f)
+                    val scaleX = (
+                        fittedOverlayW * scaleFactor / previewContentW *
+                            mainVideoInputSize.width / overlayInputSize.width.toFloat().coerceAtLeast(1f)
+                        ).coerceIn(0.001f, 10f)
+                    val scaleY = (
+                        fittedOverlayH * scaleFactor / previewContentH *
+                            mainVideoInputSize.height / overlayInputSize.height.toFloat().coerceAtLeast(1f)
+                        ).coerceIn(0.001f, 10f)
                     return StaticOverlaySettings.Builder()
                         .setAlphaScale(overlayClip.opacity.coerceIn(0f, 1f))
-                        .setScale(overlayScale, overlayScale)
+                        .setScale(scaleX, scaleY)
                         .setOverlayFrameAnchor(0f, 0f)
                         .setBackgroundFrameAnchor(normalizedX, normalizedY)
                         .setRotationDegrees(overlayClip.rotation)
