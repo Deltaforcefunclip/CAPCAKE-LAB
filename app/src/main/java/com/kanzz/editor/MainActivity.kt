@@ -3307,7 +3307,7 @@ class MainActivity : AppCompatActivity() {
             if (overlayClipManager.find(selectedOverlayClipId)?.mediaType == OverlayClip.Type.VIDEO) {
                 overlayTools.add("♫" to "Volume")
             }
-            overlayTools.addAll(listOf("◐" to "Opasitas", "✂" to "Potong", "▣" to "Duplikat", "⌫" to "Hapus"))
+            overlayTools.addAll(listOf("◩" to "Crop", "◐" to "Opasitas", "✂" to "Potong", "▣" to "Duplikat", "⌫" to "Hapus"))
             overlayTools
         } else if (selectedTextClipId != null) {
             listOf(
@@ -3456,6 +3456,9 @@ class MainActivity : AppCompatActivity() {
                         videoClipManager.find(selectedVideoClipId)?.let { showVideoMotionBlurDialog(it) }
                     }
 
+                    "Crop" -> {
+                        overlayClipManager.find(selectedOverlayClipId)?.let { showOverlayCropDialog(it) }
+                    }
                     "Atur" -> {
                         if (selectedOverlayClipId != null) {
                             overlayClipManager.find(selectedOverlayClipId)?.let { showOverlayTransformDialog(it) }
@@ -4148,6 +4151,62 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("Simpan") { _, _ ->
                 saveCurrentProject()
                 updateOverlayVideoPreview()
+            }
+            .show()
+    }
+
+    private fun showOverlayCropDialog(clip: OverlayClip) {
+        val original = floatArrayOf(clip.cropLeft, clip.cropTop, clip.cropRight, clip.cropBottom)
+        pushUndoSnapshot()
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(12), dp(20), dp(8))
+        }
+        val values = original.copyOf()
+        val labels = listOf("Crop kiri", "Crop atas", "Crop kanan", "Crop bawah")
+        fun refreshCrop() {
+            updateOverlayPreview()
+            updateOverlayVideoPreview()
+        }
+        labels.forEachIndexed { index, title ->
+            val label = TextView(this).apply {
+                text = "$title: ${(values[index] * 100).toInt()}%"
+                setTextColor(Color.WHITE)
+            }
+            val seek = SeekBar(this).apply {
+                max = 90
+                progress = (values[index] * 100).toInt().coerceIn(0, 90)
+            }
+            seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(bar: SeekBar?, value: Int, fromUser: Boolean) {
+                    values[index] = value / 100f
+                    label.text = "$title: $value%"
+                    clip.cropLeft = values[0]
+                    clip.cropTop = values[1]
+                    clip.cropRight = values[2]
+                    clip.cropBottom = values[3]
+                    refreshCrop()
+                }
+                override fun onStartTrackingTouch(bar: SeekBar?) {}
+                override fun onStopTrackingTouch(bar: SeekBar?) {}
+            })
+            content.addView(label)
+            content.addView(seek)
+        }
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Crop Overlay")
+            .setView(content)
+            .setNegativeButton("Batal") { _, _ ->
+                clip.cropLeft = original[0]
+                clip.cropTop = original[1]
+                clip.cropRight = original[2]
+                clip.cropBottom = original[3]
+                undoStack.removeLastOrNull()
+                refreshCrop()
+            }
+            .setPositiveButton("Simpan") { _, _ ->
+                saveCurrentProject()
+                refreshOverlayTracks()
             }
             .show()
     }
@@ -6720,6 +6779,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun applyOverlayCrop(view: View, clip: OverlayClip) {
+        if (view.width <= 0 || view.height <= 0) {
+            view.post { applyOverlayCrop(view, clip) }
+            return
+        }
+        val left = (view.width * clip.cropLeft / 2f).toInt().coerceIn(0, view.width - 1)
+        val top = (view.height * clip.cropTop / 2f).toInt().coerceIn(0, view.height - 1)
+        val right = (view.width * (1f - clip.cropRight / 2f)).toInt().coerceIn(left + 1, view.width)
+        val bottom = (view.height * (1f - clip.cropBottom / 2f)).toInt().coerceIn(top + 1, view.height)
+        view.clipBounds = Rect(left, top, right, bottom)
+    }
+
     private fun clearOverlayVideoPreviewPlayers() {
         overlayVideoPreviewPlayers.values.forEach { it.release() }
         overlayVideoPreviewPlayers.clear()
@@ -6812,6 +6883,7 @@ class MainActivity : AppCompatActivity() {
             }
             overlayPlayer.playWhenReady = isActiveNow && player.isPlaying
             overlayView.visibility = if (isActiveNow) View.VISIBLE else View.GONE
+            applyOverlayCrop(overlayView, clip)
             overlayView.alpha = clip.opacity.coerceIn(0f, 1f)
             overlayView.scaleX = (0.5f * clip.scale).coerceIn(0.025f, 5f)
             overlayView.scaleY = (0.5f * clip.scale).coerceIn(0.025f, 5f)
@@ -6883,6 +6955,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
+            applyOverlayCrop(view, clip)
             view.alpha = clip.opacity.coerceIn(0f, 1f)
             view.scaleX = clip.scale.coerceIn(0.05f, 10f)
             view.scaleY = clip.scale.coerceIn(0.05f, 10f)
@@ -9339,8 +9412,21 @@ class MainActivity : AppCompatActivity() {
                                     .build()
                             )
                             .build()
+                        val overlayVideoEffects = buildList<androidx.media3.common.Effect> {
+                            if (overlay.cropLeft > 0.001f || overlay.cropTop > 0.001f ||
+                                overlay.cropRight > 0.001f || overlay.cropBottom > 0.001f
+                            ) {
+                                add(Crop(
+                                    -1f + overlay.cropLeft,
+                                    1f - overlay.cropRight,
+                                    -1f + overlay.cropBottom,
+                                    1f - overlay.cropTop
+                                ))
+                            }
+                        }
                         val overlayEditedItem = EditedMediaItem.Builder(overlayMediaItem)
                             .setRemoveAudio(true)
+                            .setEffects(Effects(emptyList(), overlayVideoEffects))
                             .build()
                         sequenceBuilder.addItem(overlayEditedItem)
                         cursorMs = overlay.endTimeMs
