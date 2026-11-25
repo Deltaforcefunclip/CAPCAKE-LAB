@@ -18,7 +18,11 @@ class OverlayStateCodecTest {
             scale = 1.5f,
             rotation = 25f,
             opacity = 0.75f,
-            volume = 0.42f
+            volume = 0.42f,
+            cropLeft = 0.1f,
+            cropTop = 0.2f,
+            cropRight = 0.3f,
+            cropBottom = 0.4f
         ))
         add(OverlayClip(
             id = "image-one",
@@ -47,6 +51,10 @@ class OverlayStateCodecTest {
         assertEquals(25f, video.rotation, 0.001f)
         assertEquals(0.75f, video.opacity, 0.001f)
         assertEquals(0.42f, video.volume, 0.001f)
+        assertEquals(0.1f, video.cropLeft, 0.001f)
+        assertEquals(0.2f, video.cropTop, 0.001f)
+        assertEquals(0.3f, video.cropRight, 0.001f)
+        assertEquals(0.4f, video.cropBottom, 0.001f)
         assertEquals(OverlayClip.Type.IMAGE, restored.find("image-one")!!.mediaType)
     }
 
@@ -61,6 +69,10 @@ class OverlayStateCodecTest {
         assertEquals(1f, clip.scale, 0.001f)
         assertEquals(1f, clip.opacity, 0.001f)
         assertEquals(1f, clip.volume, 0.001f)
+        assertEquals(0f, clip.cropLeft, 0.001f)
+        assertEquals(0f, clip.cropTop, 0.001f)
+        assertEquals(0f, clip.cropRight, 0.001f)
+        assertEquals(0f, clip.cropBottom, 0.001f)
         assertEquals(1500L, clip.sourceDurationMs)
     }
 
