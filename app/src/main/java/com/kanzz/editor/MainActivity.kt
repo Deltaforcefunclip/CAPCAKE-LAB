@@ -6950,10 +6950,38 @@ class MainActivity : AppCompatActivity() {
             view.post { applyOverlayCrop(view, clip) }
             return
         }
-        val left = (view.width * clip.cropLeft / 2f).toInt().coerceIn(0, view.width - 1)
-        val top = (view.height * clip.cropTop / 2f).toInt().coerceIn(0, view.height - 1)
-        val right = (view.width * (1f - clip.cropRight / 2f)).toInt().coerceIn(left + 1, view.width)
-        val bottom = (view.height * (1f - clip.cropBottom / 2f)).toInt().coerceIn(top + 1, view.height)
+        // Untuk video, crop harus dihitung dari area frame yang benar-benar dirender
+        // PlayerView (FIT), bukan area view yang mungkin memiliki letterbox.
+        var contentLeft = 0f
+        var contentTop = 0f
+        var contentWidth = view.width.toFloat()
+        var contentHeight = view.height.toFloat()
+        if (clip.mediaType == OverlayClip.Type.VIDEO) {
+            val size = overlayVideoPreviewPlayers[clip.id]?.videoSize
+            if (size != null && size.width > 0 && size.height > 0) {
+                val videoAspect = size.width.toFloat() / size.height.toFloat()
+                val viewAspect = view.width.toFloat() / view.height.toFloat()
+                if (videoAspect > viewAspect) {
+                    contentHeight = view.width / videoAspect
+                    contentTop = (view.height - contentHeight) * 0.5f
+                } else {
+                    contentWidth = view.height * videoAspect
+                    contentLeft = (view.width - contentWidth) * 0.5f
+                }
+            }
+        }
+        val cropLeft = clip.cropLeft.coerceIn(0f, 0.95f)
+        val cropTop = clip.cropTop.coerceIn(0f, 0.95f)
+        val cropRight = clip.cropRight.coerceIn(0f, 0.95f - cropLeft)
+        val cropBottom = clip.cropBottom.coerceIn(0f, 0.95f - cropTop)
+        val left = (contentLeft + contentWidth * cropLeft / 2f)
+            .toInt().coerceIn(0, view.width - 1)
+        val top = (contentTop + contentHeight * cropTop / 2f)
+            .toInt().coerceIn(0, view.height - 1)
+        val right = (contentLeft + contentWidth * (1f - cropRight / 2f))
+            .toInt().coerceIn(left + 1, view.width)
+        val bottom = (contentTop + contentHeight * (1f - cropBottom / 2f))
+            .toInt().coerceIn(top + 1, view.height)
         view.clipBounds = Rect(left, top, right, bottom)
     }
 
