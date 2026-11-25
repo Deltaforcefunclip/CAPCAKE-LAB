@@ -146,12 +146,21 @@ class OverlayTrackView(
                         when (mode) {
                             2 -> {
                                 val end = originStart + originDuration
-                                previewStart = (originStart + delta).coerceIn(0L, end - 100L)
+                                val minimumDuration = minOf(100L, originDuration)
+                                // Trim kiri hanya boleh menggeser awal ke kanan, tidak
+                                // memperpanjang klip ke area sebelum posisi asal.
+                                previewStart = (originStart + delta).coerceIn(
+                                    originStart,
+                                    end - minimumDuration
+                                )
                                 previewDuration = end - previewStart
                             }
-                            // Trim hanya memperpendek klip. Memperpanjang akan melampaui
-                            // source range dan ditolak manager setelah preview terlihat bergerak.
-                            3 -> previewDuration = (originDuration + delta).coerceIn(100L, originDuration)
+                            // Trim kanan hanya memperpendek klip; jangan tampilkan preview
+                            // yang nanti ditolak manager karena melampaui source range.
+                            3 -> previewDuration = (originDuration + delta).coerceIn(
+                                minOf(100L, originDuration),
+                                originDuration
+                            )
                             else -> previewStart = (originStart + delta).coerceAtLeast(0L)
                         }
                         invalidate()
