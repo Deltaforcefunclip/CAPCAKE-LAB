@@ -97,6 +97,15 @@ class OverlayStateCodecTest {
         assertEquals(before, OverlayStateCodec.encode(restored))
     }
 
+    @Test fun unsupportedFutureVersionDoesNotMutateExistingManager() {
+        val restored = manager()
+        val before = OverlayStateCodec.encode(restored)
+        val futurePayload = """{"version":999,"clips":[]}"""
+
+        assertFalse(OverlayStateCodec.restore(futurePayload, restored))
+        assertEquals(before, OverlayStateCodec.encode(restored))
+    }
+
     @Test fun restoreClampsSafeTransformRanges() {
         val json = """{"clips":[{"id":"safe","sourceUri":"content://safe","mediaType":"IMAGE","startTimeMs":0,"durationMs":1000,"scale":99,"opacity":-2}]}"""
         val restored = OverlayClipManager()
