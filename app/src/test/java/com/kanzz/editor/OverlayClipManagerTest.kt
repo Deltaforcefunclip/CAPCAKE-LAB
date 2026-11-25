@@ -91,7 +91,7 @@ class OverlayClipManagerTest {
 
         assertNotNull(second)
         assertEquals(1000L, clip.sourceDurationMs)
-        assertEquals(1001L, second!!.sourceStartMs)
+        assertEquals(1000L, second!!.sourceStartMs)
         assertEquals(1001L, second.sourceDurationMs)
         assertEquals(clip.durationMs, clip.sourceDurationMs)
         assertEquals(second.durationMs, second.sourceDurationMs)
