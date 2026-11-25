@@ -8074,9 +8074,47 @@ class MainActivity : AppCompatActivity() {
 
     private fun analyzeExportSources(onComplete: (List<ExportSourceProfile>) -> Unit) {
         val sourceUris = videoClipManager.clips.map { it.sourceUri }.distinct()
+        // Video Overlay adalah input sequence tersendiri. Pastikan sumber dan
+        // rentang trim-nya terbaca sebelum Transformer mulai membuat file.
+        val overlayVideoClips = overlayClipManager.clips.filter {
+            it.mediaType == OverlayClip.Type.VIDEO &&
+                it.startTimeMs < videoClipManager.durationMs
+        }
         Thread {
             val profiles = sourceUris.mapNotNull { inspectExportSource(it) }
-            runOnUiThread { onComplete(profiles) }
+            val invalidOverlay = overlayVideoClips.firstOrNull { clip ->
+                val readable = inspectExportSource(clip.sourceUri) != null
+                if (!readable) {
+                    true
+                } else {
+                    val retriever = MediaMetadataRetriever()
+                    try {
+                        retriever.setDataSource(this, Uri.parse(clip.sourceUri))
+                        val sourceDurationMs = retriever.extractMetadata(
+                            MediaMetadataRetriever.METADATA_KEY_DURATION
+                        )?.toLongOrNull() ?: 0L
+                        val remainingMs = (videoClipManager.durationMs - clip.startTimeMs)
+                            .coerceAtLeast(0L)
+                        val exportDurationMs = minOf(clip.durationMs, remainingMs)
+                        sourceDurationMs <= 0L ||
+                            clip.sourceStartMs + exportDurationMs > sourceDurationMs + 100L
+                    } catch (_: Exception) {
+                        true
+                    } finally {
+                        try { retriever.release() } catch (_: Exception) {}
+                    }
+                }
+            }
+            runOnUiThread {
+                if (invalidOverlay != null) {
+                    showMessage(
+                        "Sumber atau rentang video Overlay tidak dapat dibaca. " +
+                            "Periksa file dan posisi trim Overlay."
+                    )
+                } else {
+                    onComplete(profiles)
+                }
+            }
         }.start()
     }
 
