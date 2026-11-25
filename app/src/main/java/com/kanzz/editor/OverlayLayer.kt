@@ -22,7 +22,8 @@ data class OverlayClip(
     var positionY: Float = 0f,
     var scale: Float = 1f,
     var rotation: Float = 0f,
-    var opacity: Float = 1f
+    var opacity: Float = 1f,
+    var volume: Float = 1f
 ) {
     enum class Type { VIDEO, IMAGE }
 
@@ -64,6 +65,7 @@ class OverlayClipManager {
         }
         clip.trackIndex = firstAvailableLane(clip.startTimeMs, clip.durationMs)
         clip.opacity = clip.opacity.coerceIn(0f, 1f)
+        clip.volume = clip.volume.coerceIn(0f, 2f)
         clip.scale = clip.scale.coerceIn(0.05f, 10f)
         clips.add(clip)
         sort()
