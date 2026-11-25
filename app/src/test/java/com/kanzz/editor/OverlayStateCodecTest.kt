@@ -17,7 +17,8 @@ class OverlayStateCodecTest {
             positionY = -8f,
             scale = 1.5f,
             rotation = 25f,
-            opacity = 0.75f
+            opacity = 0.75f,
+            volume = 0.42f
         ))
         add(OverlayClip(
             id = "image-one",
@@ -45,6 +46,7 @@ class OverlayStateCodecTest {
         assertEquals(1.5f, video.scale, 0.001f)
         assertEquals(25f, video.rotation, 0.001f)
         assertEquals(0.75f, video.opacity, 0.001f)
+        assertEquals(0.42f, video.volume, 0.001f)
         assertEquals(OverlayClip.Type.IMAGE, restored.find("image-one")!!.mediaType)
     }
 
@@ -58,6 +60,7 @@ class OverlayStateCodecTest {
         assertEquals(0f, clip.positionY, 0.001f)
         assertEquals(1f, clip.scale, 0.001f)
         assertEquals(1f, clip.opacity, 0.001f)
+        assertEquals(1f, clip.volume, 0.001f)
         assertEquals(1500L, clip.sourceDurationMs)
     }
 
@@ -95,6 +98,14 @@ class OverlayStateCodecTest {
         assertEquals(before, OverlayStateCodec.encode(restored))
         assertFalse(OverlayStateCodec.restore(invalid, restored))
         assertEquals(before, OverlayStateCodec.encode(restored))
+    }
+
+    @Test fun restoreClampsOverlayVolumeToSupportedRange() {
+        val json = """{"clips":[{"id":"volume","sourceUri":"content://video","mediaType":"VIDEO","startTimeMs":0,"durationMs":1000,"volume":8.0}]}"""
+        val restored = OverlayClipManager()
+
+        assertTrue(OverlayStateCodec.restore(json, restored))
+        assertEquals(2f, restored.find("volume")!!.volume, 0.001f)
     }
 
     @Test fun unsupportedFutureVersionDoesNotMutateExistingManager() {
