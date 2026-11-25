@@ -4169,7 +4169,7 @@ class MainActivity : AppCompatActivity() {
             addView(label)
             addView(seek)
         }
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Volume Video Overlay")
             .setView(box)
             .setNegativeButton("Batal") { _, _ ->
@@ -4181,7 +4181,13 @@ class MainActivity : AppCompatActivity() {
                 saveCurrentProject()
                 updateOverlayVideoPreview()
             }
-            .show()
+            .create()
+        dialog.setOnCancelListener {
+            clip.volume = original
+            undoStack.removeLastOrNull()
+            updateOverlayVideoPreview()
+        }
+        dialog.show()
     }
 
     private fun showOverlayCropDialog(clip: OverlayClip) {
@@ -4222,7 +4228,7 @@ class MainActivity : AppCompatActivity() {
             content.addView(label)
             content.addView(seek)
         }
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Crop Overlay")
             .setView(content)
             .setNegativeButton("Batal") { _, _ ->
@@ -4237,7 +4243,16 @@ class MainActivity : AppCompatActivity() {
                 saveCurrentProject()
                 refreshOverlayTracks()
             }
-            .show()
+            .create()
+        dialog.setOnCancelListener {
+            clip.cropLeft = original[0]
+            clip.cropTop = original[1]
+            clip.cropRight = original[2]
+            clip.cropBottom = original[3]
+            undoStack.removeLastOrNull()
+            refreshCrop()
+        }
+        dialog.show()
     }
 
     private fun showOverlayTransformDialog(clip: OverlayClip) {
