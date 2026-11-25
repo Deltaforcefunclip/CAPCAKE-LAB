@@ -6475,7 +6475,12 @@ class MainActivity : AppCompatActivity() {
                         val centerY = (event.getRawY(0) + event.getRawY(1)) / 2f
                         val nextScale = (baseScale * distance(event) / startDistance.coerceAtLeast(1f))
                             .coerceIn(0.05f, 10f)
-                        val nextRotation = baseRotation + (angle(event) - startAngle)
+                        var rotationDelta = angle(event) - startAngle
+                        // Sudut atan2 melompat dari +180 ke -180 derajat.
+                        // Normalisasi delta agar rotasi tetap melewati batas tanpa loncatan 360°.
+                        if (rotationDelta > 180f) rotationDelta -= 360f
+                        if (rotationDelta < -180f) rotationDelta += 360f
+                        val nextRotation = baseRotation + rotationDelta
                         val nextX = baseX + centerX - downX
                         val nextY = baseY + centerY - downY
                         if (!undoSaved && (abs(nextScale - clip.scale) > 0.001f ||
