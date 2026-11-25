@@ -9689,9 +9689,12 @@ class MainActivity : AppCompatActivity() {
 
             val frameWidth = playerView.width.coerceAtLeast(1).toFloat()
             val frameHeight = playerView.height.coerceAtLeast(1).toFloat()
+            // Setelah pengurutan ulang, input utama berada tepat setelah seluruh
+            // sequence overlay. Ukuran output harus tetap mengikuti video utama.
+            val mainVideoInputId = overlaySequenceClips.size
             val compositorSettings = object : VideoCompositorSettings {
                 override fun getOutputSize(inputSizes: MutableList<Size>): Size =
-                    inputSizes.firstOrNull() ?: Size(1280, 720)
+                    inputSizes.getOrNull(mainVideoInputId) ?: inputSizes.firstOrNull() ?: Size(1280, 720)
 
                 override fun getOverlaySettings(inputId: Int, presentationTimeUs: Long): OverlaySettings {
                     val sequenceClips = overlaySequenceClips[inputId]
