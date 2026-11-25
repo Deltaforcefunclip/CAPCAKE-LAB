@@ -5092,6 +5092,8 @@ class MainActivity : AppCompatActivity() {
                 lane,
                 { overlayClipManager.clips },
                 onSelected = { clip ->
+                    activeLayerGroup = "OVERLAY"
+                    updateLayerGroupVisibility()
                     selectedOverlayClipId = clip?.id
                     selectedVideoClipId = null
                     selectedAudioClipId = null
