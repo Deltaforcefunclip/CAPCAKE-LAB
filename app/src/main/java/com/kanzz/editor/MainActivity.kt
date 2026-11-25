@@ -143,6 +143,9 @@ class MainActivity : AppCompatActivity() {
     private val effectClipManager = EffectClipManager()
     private val overlayClipManager = OverlayClipManager()
     private var selectedOverlayClipId: String? = null
+    private var activeOverlayCropClipId: String? = null
+    private var activeOverlayCropFinish: ((Boolean) -> Unit)? = null
+    private var overlayCropBackCallback: androidx.activity.OnBackPressedCallback? = null
     private val overlayImagePreviewViews = mutableMapOf<String, ImageView>()
     private val overlayImagePreviewBitmaps = mutableMapOf<String, Bitmap>()
     private val overlayImagePreviewGenerations = mutableMapOf<String, Int>()
@@ -3457,7 +3460,14 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     "Crop" -> {
-                        overlayClipManager.find(selectedOverlayClipId)?.let { showOverlayCropDialog(it) }
+                        val clip = overlayClipManager.find(selectedOverlayClipId)
+                        if (clip != null) {
+                            if (activeOverlayCropClipId == clip.id) {
+                                activeOverlayCropFinish?.invoke(true)
+                            } else {
+                                showOverlayCropDialog(clip)
+                            }
+                        }
                     }
                     "Atur" -> {
                         if (selectedOverlayClipId != null) {
@@ -4191,8 +4201,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showOverlayCropDialog(clip: OverlayClip) {
+        if (activeOverlayCropClipId != null) return
         val original = floatArrayOf(clip.cropLeft, clip.cropTop, clip.cropRight, clip.cropBottom)
         pushUndoSnapshot()
+        activeOverlayCropClipId = clip.id
 
         val preview = previewFrameContainer
         // Bingkai crop mengikuti area media yang benar-benar tampil, bukan seluruh
@@ -4326,13 +4338,6 @@ class MainActivity : AppCompatActivity() {
             elevation = dp(30).toFloat()
         }
 
-        val controls = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-            setBackgroundColor(Color.argb(225, 20, 20, 20))
-            elevation = dp(32).toFloat()
-        }
         fun finishCrop(save: Boolean) {
             if (!save) {
                 clip.cropLeft = original[0]
@@ -4345,36 +4350,26 @@ class MainActivity : AppCompatActivity() {
                 refreshOverlayTracks()
             }
             preview.removeView(guide)
-            preview.removeView(controls)
+            activeOverlayCropClipId = null
+            activeOverlayCropFinish = null
+            overlayCropBackCallback?.remove()
+            overlayCropBackCallback = null
             updateOverlayPreview()
             updateOverlayVideoPreview()
         }
-        val cancel = TextView(this).apply {
-            text = "BATAL"
-            textSize = 12f
-            setTextColor(Color.WHITE)
-            setPadding(dp(16), dp(8), dp(16), dp(8))
-            setOnClickListener { finishCrop(false) }
-        }
-        val save = TextView(this).apply {
-            text = "SIMPAN"
-            textSize = 12f
-            setTextColor(green)
-            setPadding(dp(16), dp(8), dp(16), dp(8))
-            setOnClickListener { finishCrop(true) }
-        }
-        controls.addView(cancel)
-        controls.addView(save)
-        preview.addView(guide, FrameLayout.LayoutParams(-1, -1))
-        preview.addView(
-            controls,
-            FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
-                topMargin = dp(8)
+        activeOverlayCropFinish = ::finishCrop
+        overlayCropBackCallback = object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                finishCrop(false)
             }
-        )
+        }.also { onBackPressedDispatcher.addCallback(this, it) }
+        preview.addView(guide, FrameLayout.LayoutParams(-1, -1))
         guide.bringToFront()
-        controls.bringToFront()
-        Toast.makeText(this, "Garis crop sekarang mengikuti ukuran media overlay.", Toast.LENGTH_LONG).show()
+        Toast.makeText(
+            this,
+            "Geser garis crop, lalu tekan tombol CROP lagi untuk menyimpan. Kembali untuk batal.",
+            Toast.LENGTH_LONG
+        ).show()
     }
 
     private fun showOverlayTransformDialog(clip: OverlayClip) {
@@ -9048,6 +9043,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startExportVideo(outputFps: Float?, outputWidth: Int?, outputHeight: Int?) {
+        // Gunakan FPS clip pertama di timeline sebagai FPS dasar ketika pengguna
+        // memilih otomatis. Semua input video (utama dan overlay) harus seragam.
+        val mainSourceFps = videoClipManager.clips.firstOrNull()?.let { clip ->
+            inspectExportSource(clip.sourceUri)?.frameRate
+        }?.takeIf { it > 0f }
+        val exportFrameRate = outputFps?.takeIf { it > 0f } ?: mainSourceFps
 
         data class ExportImageOverlaySnapshot(
             val bitmap: Bitmap,
@@ -9145,8 +9146,8 @@ class MainActivity : AppCompatActivity() {
                     })
                 // API frame-rate cap ini mengikuti timestamp setelah speed diterapkan.
                 // Jika pengguna tidak memilih FPS, sumber dibiarkan otomatis.
-                if (outputFps != null) {
-                    editedBuilder.setFrameRate(outputFps.toInt().coerceAtLeast(1))
+                if (exportFrameRate != null) {
+                    editedBuilder.setFrameRate(exportFrameRate.toInt().coerceAtLeast(1))
                 }
                 editedBuilder.setEffects(
                         Effects(
@@ -9461,8 +9462,8 @@ class MainActivity : AppCompatActivity() {
                                 }
 
                                 // Batas FPS per klip sebagai fallback pada Media3 stabil.
-                                if (outputFps != null) {
-                                    add(FrameDropEffect.createDefaultFrameDropEffect(outputFps))
+                                if (exportFrameRate != null) {
+                                    add(FrameDropEffect.createDefaultFrameDropEffect(exportFrameRate))
                                 }
 
                             }
@@ -9653,10 +9654,13 @@ class MainActivity : AppCompatActivity() {
                                 ))
                             }
                         }
-                        val overlayEditedItem = EditedMediaItem.Builder(overlayMediaItem)
+                        val overlayEditedBuilder = EditedMediaItem.Builder(overlayMediaItem)
                             .setRemoveAudio(true)
                             .setEffects(Effects(emptyList(), overlayVideoEffects))
-                            .build()
+                        if (exportFrameRate != null) {
+                            overlayEditedBuilder.setFrameRate(exportFrameRate.toInt().coerceAtLeast(1))
+                        }
+                        val overlayEditedItem = overlayEditedBuilder.build()
                         sequenceBuilder.addItem(overlayEditedItem)
                         cursorMs = overlay.endTimeMs
                     }
@@ -9786,8 +9790,10 @@ class MainActivity : AppCompatActivity() {
             // bukan ukuran view Android, agar resolusi ekspor tidak menggeser overlay.
             val mainVideoInputId = overlaySequenceClips.size
             var mainVideoInputSize = Size(1280, 720)
+            var compositorInputSizes: List<Size> = emptyList()
             val compositorSettings = object : VideoCompositorSettings {
                 override fun getOutputSize(inputSizes: MutableList<Size>): Size {
+                    compositorInputSizes = inputSizes.toList()
                     mainVideoInputSize = inputSizes.getOrNull(mainVideoInputId)
                         ?: inputSizes.firstOrNull()
                         ?: Size(1280, 720)
@@ -9809,10 +9815,27 @@ class MainActivity : AppCompatActivity() {
                         // dengan pengaturan default jika metadata lane tidak tersedia.
                         return StaticOverlaySettings.Builder().build()
                     }
+                    // Konversi posisi memakai area konten preview yang sama dengan
+                    // CanvasOverlay image/text export, bukan resolusi file output.
+                    val previewW = previewFrameContainer.width.coerceAtLeast(1).toFloat()
+                    val previewH = previewFrameContainer.height.coerceAtLeast(1).toFloat()
+                    val outputAspect = mainVideoInputSize.width.toFloat() /
+                        mainVideoInputSize.height.toFloat().coerceAtLeast(1f)
+                    val previewAspect = previewW / previewH
+                    val previewContentW: Float
+                    val previewContentH: Float
+                    if (outputAspect >= previewAspect) {
+                        previewContentW = previewW
+                        previewContentH = previewW / outputAspect
+                    } else {
+                        previewContentH = previewH
+                        previewContentW = previewH * outputAspect
+                    }
                     val normalizedX = (overlayClip.positionX * 2f /
-                        mainVideoInputSize.width.toFloat().coerceAtLeast(1f)).coerceIn(-2f, 2f)
+                        previewContentW.coerceAtLeast(1f)).coerceIn(-2f, 2f)
                     val normalizedY = (-overlayClip.positionY * 2f /
-                        mainVideoInputSize.height.toFloat().coerceAtLeast(1f)).coerceIn(-2f, 2f)
+                        previewContentH.coerceAtLeast(1f)).coerceIn(-2f, 2f)
+                    // Skala sama persis dengan PlayerView preview (0.5 * clip.scale).
                     val overlayScale = (0.5f * overlayClip.scale).coerceIn(0.025f, 5f)
                     return StaticOverlaySettings.Builder()
                         .setAlphaScale(overlayClip.opacity.coerceIn(0f, 1f))
