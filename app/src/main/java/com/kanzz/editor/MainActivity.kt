@@ -6629,6 +6629,10 @@ class MainActivity : AppCompatActivity() {
             overlayView.rotation = clip.rotation
             overlayView.translationX = clip.positionX
             overlayView.translationY = clip.positionY
+            // Urutan child harus mengikuti lane timeline, bukan urutan saat player
+            // pertama kali dibuat. Klip lane bawah yang baru aktif tidak boleh
+            // menutupi klip lane atas yang player-nya sudah lebih dulu ada.
+            overlayView.bringToFront()
         }
     }
 
