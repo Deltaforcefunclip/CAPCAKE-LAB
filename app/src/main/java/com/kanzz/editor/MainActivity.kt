@@ -3303,7 +3303,12 @@ class MainActivity : AppCompatActivity() {
         val names = if (selectedEffectClipId != null) {
             listOf("⚙" to "Atur", "◐" to "Opasitas", "✂" to "Potong", "▣" to "Duplikat", "⌫" to "Hapus")
         } else if (selectedOverlayClipId != null) {
-            listOf("⚙" to "Atur", "⇅" to "Track", "◐" to "Opasitas", "✂" to "Potong", "▣" to "Duplikat", "⌫" to "Hapus")
+            val overlayTools = mutableListOf("⚙" to "Atur", "⇅" to "Track")
+            if (overlayClipManager.find(selectedOverlayClipId)?.mediaType == OverlayClip.Type.VIDEO) {
+                overlayTools.add("♫" to "Volume")
+            }
+            overlayTools.addAll(listOf("◐" to "Opasitas", "✂" to "Potong", "▣" to "Duplikat", "⌫" to "Hapus"))
+            overlayTools
         } else if (selectedTextClipId != null) {
             listOf(
                 "✎" to "Edit Text", "Aa" to "Font", "▣" to "Salin",
@@ -3683,7 +3688,9 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     "Volume" -> {
-                        if (selectedAudioClipId != null) {
+                        if (selectedOverlayClipId != null) {
+                            overlayClipManager.find(selectedOverlayClipId)?.let { showOverlayVolumeDialog(it) }
+                        } else if (selectedAudioClipId != null) {
                             val clip = audioClipManager.clips
                                 .firstOrNull { it.id == selectedAudioClipId }
                             if (clip != null) showAudioClipVolume(clip)
@@ -4098,6 +4105,49 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("Simpan") { _, _ ->
                 saveCurrentProject()
                 refreshOverlayTracks()
+            }
+            .show()
+    }
+
+    private fun showOverlayVolumeDialog(clip: OverlayClip) {
+        if (clip.mediaType != OverlayClip.Type.VIDEO) return
+        val original = clip.volume
+        pushUndoSnapshot()
+        val seek = SeekBar(this).apply {
+            max = 200
+            progress = (original * 100f).toInt().coerceIn(0, 200)
+        }
+        val label = TextView(this).apply {
+            text = "Volume ${seek.progress}%"
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+        }
+        seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(bar: SeekBar?, value: Int, fromUser: Boolean) {
+                label.text = "Volume $value%"
+                clip.volume = (value / 100f).coerceIn(0f, 2f)
+                updateOverlayVideoPreview()
+            }
+            override fun onStartTrackingTouch(bar: SeekBar?) {}
+            override fun onStopTrackingTouch(bar: SeekBar?) {}
+        })
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(12), dp(20), dp(8))
+            addView(label)
+            addView(seek)
+        }
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Volume Video Overlay")
+            .setView(box)
+            .setNegativeButton("Batal") { _, _ ->
+                clip.volume = original
+                undoStack.removeLastOrNull()
+                updateOverlayVideoPreview()
+            }
+            .setPositiveButton("Simpan") { _, _ ->
+                saveCurrentProject()
+                updateOverlayVideoPreview()
             }
             .show()
     }
@@ -6703,7 +6753,7 @@ class MainActivity : AppCompatActivity() {
                 overlayPlayer?.release()
                 overlayView?.let(overlayVideoPreviewContainer::removeView)
                 overlayPlayer = ExoPlayer.Builder(this).build().apply {
-                    volume = 0f
+                    volume = clip.volume.coerceIn(0f, 2f)
                     val item = MediaItem.Builder()
                         .setUri(Uri.parse(clip.sourceUri))
                         .setClippingConfiguration(
@@ -6738,8 +6788,9 @@ class MainActivity : AppCompatActivity() {
             }
 
             val localPosition = (position - clip.startTimeMs).coerceIn(0L, clip.durationMs)
+            overlayPlayer.volume = clip.volume.coerceIn(0f, 2f)
             val drift = abs(overlayPlayer.currentPosition - localPosition)
-            val seekThreshold = if (player.isPlaying) 350L else 45L
+            val seekThreshold = if (player.isPlaying) 80L else 45L
             if (overlayPlayer.playbackState == Player.STATE_IDLE ||
                 overlayPlayer.playbackState == Player.STATE_ENDED ||
                 drift > seekThreshold ||
