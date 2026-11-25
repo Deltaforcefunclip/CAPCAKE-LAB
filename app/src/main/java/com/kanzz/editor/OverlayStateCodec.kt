@@ -27,6 +27,7 @@ object OverlayStateCodec {
                 put("scale", clip.scale.toDouble())
                 put("rotation", clip.rotation.toDouble())
                 put("opacity", clip.opacity.toDouble())
+                put("volume", clip.volume.toDouble())
             })
         }
         return JSONObject()
@@ -69,7 +70,8 @@ object OverlayStateCodec {
                     positionY = item.optDouble("positionY", 0.0).toFloat(),
                     scale = item.optDouble("scale", 1.0).toFloat(),
                     rotation = item.optDouble("rotation", 0.0).toFloat(),
-                    opacity = item.optDouble("opacity", 1.0).toFloat()
+                    opacity = item.optDouble("opacity", 1.0).toFloat(),
+                    volume = item.optDouble("volume", 1.0).toFloat()
                 )
                 require(clip.startTimeMs >= 0L && clip.durationMs > 0L)
                 require(clip.sourceStartMs >= 0L && clip.sourceDurationMs > 0L)
@@ -81,8 +83,9 @@ object OverlayStateCodec {
                 require(clip.trackIndex >= 0)
                 clip.scale = clip.scale.coerceIn(0.05f, 10f)
                 clip.opacity = clip.opacity.coerceIn(0f, 1f)
+                clip.volume = clip.volume.coerceIn(0f, 2f)
                 require(clip.positionX.isFinite() && clip.positionY.isFinite())
-                require(clip.rotation.isFinite() && clip.scale.isFinite() && clip.opacity.isFinite())
+                require(clip.rotation.isFinite() && clip.scale.isFinite() && clip.opacity.isFinite() && clip.volume.isFinite())
                 require(restored.find(clip.id) == null) { "Duplicate overlay clip id" }
                 restored.clips.add(clip)
             }
