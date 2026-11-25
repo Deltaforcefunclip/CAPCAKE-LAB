@@ -78,18 +78,24 @@ class OverlayClipManager {
         return true
     }
 
+    /** Validasi perpindahan tanpa mengubah state manager. */
+    fun canMove(id: String, newStartTimeMs: Long, newLane: Int): Boolean {
+        val clip = find(id) ?: return false
+        if (newStartTimeMs < 0L || newLane < 0) return false
+        val newEndTimeMs = newStartTimeMs + clip.durationMs
+        return clips.none { other ->
+            other.id != clip.id &&
+                other.trackIndex == newLane &&
+                newStartTimeMs < other.endTimeMs &&
+                newEndTimeMs > other.startTimeMs
+        }
+    }
+
     /** Memindahkan waktu dan lane sekaligus; perubahan ditolak jika terjadi tabrakan. */
     fun moveClip(id: String, newStartTimeMs: Long, newLane: Int): Boolean {
         val clip = find(id) ?: return false
-        if (newStartTimeMs < 0L || newLane < 0) return false
-        val oldStart = clip.startTimeMs
-        val oldLane = clip.trackIndex
+        if (!canMove(id, newStartTimeMs, newLane)) return false
         clip.startTimeMs = newStartTimeMs
-        if (!canMoveToLane(clip, newLane)) {
-            clip.startTimeMs = oldStart
-            clip.trackIndex = oldLane
-            return false
-        }
         clip.trackIndex = newLane
         sort()
         return true
@@ -138,16 +144,30 @@ class OverlayClipManager {
         return second
     }
 
-    fun trim(id: String, newStartTimeMs: Long, newDurationMs: Long): Boolean {
+    /** Validasi trim tanpa memutasi klip; berguna sebelum membuat undo snapshot. */
+    fun canTrim(id: String, newStartTimeMs: Long, newDurationMs: Long): Boolean {
         val clip = find(id) ?: return false
         if (newStartTimeMs < clip.startTimeMs || newDurationMs < 1L) return false
+        val oldEnd = clip.endTimeMs
+        val newEnd = newStartTimeMs + newDurationMs
+        if (newEnd > oldEnd) return false
+        return clips.none { other ->
+            other.id != clip.id &&
+                other.trackIndex == clip.trackIndex &&
+                newStartTimeMs < other.endTimeMs &&
+                newEnd > other.startTimeMs
+        }
+    }
+
+    fun trim(id: String, newStartTimeMs: Long, newDurationMs: Long): Boolean {
+        val clip = find(id) ?: return false
+        if (!canTrim(id, newStartTimeMs, newDurationMs)) return false
         val oldStart = clip.startTimeMs
         val oldDuration = clip.durationMs
         val oldSourceStart = clip.sourceStartMs
         val oldSourceDuration = clip.sourceDurationMs
-        val oldEnd = oldStart + oldDuration
+        val oldEnd = clip.endTimeMs
         val newEnd = newStartTimeMs + newDurationMs
-        if (newEnd > oldEnd) return false
 
         if (clip.mediaType == OverlayClip.Type.VIDEO) {
             val sourcePerTimelineMs = oldSourceDuration.toDouble() / oldDuration.coerceAtLeast(1L)
@@ -158,13 +178,6 @@ class OverlayClipManager {
         }
         clip.startTimeMs = newStartTimeMs
         clip.durationMs = newDurationMs
-        if (!canMoveToLane(clip, clip.trackIndex)) {
-            clip.startTimeMs = oldStart
-            clip.durationMs = oldDuration
-            clip.sourceStartMs = oldSourceStart
-            clip.sourceDurationMs = oldSourceDuration
-            return false
-        }
         sort()
         return true
     }
