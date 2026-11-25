@@ -5123,6 +5123,8 @@ class MainActivity : AppCompatActivity() {
                     selectedEffectClipId = null
                     videoSelected = false
                     clearAudioTrackSelection()
+                    clearTextTrackSelection()
+                    clearEffectTrackSelection()
                     timeline.selectClip(null)
                     timeline.updateSelection(false)
                     for (i in 0 until thisOverlayTracksContainer.childCount) {
@@ -5217,14 +5219,14 @@ class MainActivity : AppCompatActivity() {
                     selectedVideoClipId = null
                     videoSelected = false
                     clearAudioTrackSelection()
+                    clearOverlayTrackSelection()
                     timeline.selectClip(null)
                     timeline.updateSelection(false)
-                    for (i in 0 until thisTextTracksContainer.childCount) {
-                        (thisTextTracksContainer.getChildAt(i) as? TextTrackView)?.select(null)
-                    }
+                    clearTextTrackSelection()
                     for (i in 0 until thisEffectTracksContainer.childCount) {
                         (thisEffectTracksContainer.getChildAt(i) as? EffectTrackView)?.select(clip?.id)
                     }
+                    clearOverlayTrackSelection()
                     if (clip != null) activeLayerGroup = "EFFECT"
                     updateLayerGroupVisibility()
                     updateToolMenu()
@@ -5317,6 +5319,8 @@ class MainActivity : AppCompatActivity() {
                     selectedAudioClipId = null
                     selectedEffectClipId = null
                     clearAudioTrackSelection()
+                    clearEffectTrackSelection()
+                    clearOverlayTrackSelection()
                     selectedVideoClipId = null
                     videoSelected = false
                     timeline.selectClip(null)
@@ -7100,11 +7104,9 @@ class MainActivity : AppCompatActivity() {
                     timeline.selectClip(null)
                     timeline.updateSelection(false)
                     playerView.foreground = null
-                    if (::thisTextTracksContainer.isInitialized) {
-                        for (i in 0 until thisTextTracksContainer.childCount) {
-                            (thisTextTracksContainer.getChildAt(i) as? TextTrackView)?.select(null)
-                        }
-                    }
+                    clearTextTrackSelection()
+                    clearEffectTrackSelection()
+                    clearOverlayTrackSelection()
                     audioTrackViews.values.forEach { it.selectClip(clip?.id) }
                     updateTextPreview()
                     updateToolMenu()
@@ -7225,6 +7227,27 @@ class MainActivity : AppCompatActivity() {
 
     private fun clearAudioTrackSelection() {
         audioTrackViews.values.forEach { it.selectClip(null) }
+    }
+
+    private fun clearTextTrackSelection() {
+        if (!::thisTextTracksContainer.isInitialized) return
+        for (i in 0 until thisTextTracksContainer.childCount) {
+            (thisTextTracksContainer.getChildAt(i) as? TextTrackView)?.select(null)
+        }
+    }
+
+    private fun clearEffectTrackSelection() {
+        if (!::thisEffectTracksContainer.isInitialized) return
+        for (i in 0 until thisEffectTracksContainer.childCount) {
+            (thisEffectTracksContainer.getChildAt(i) as? EffectTrackView)?.select(null)
+        }
+    }
+
+    private fun clearOverlayTrackSelection() {
+        if (!::thisOverlayTracksContainer.isInitialized) return
+        for (i in 0 until thisOverlayTracksContainer.childCount) {
+            (thisOverlayTracksContainer.getChildAt(i) as? OverlayTrackView)?.select(null)
+        }
     }
 
     private fun selectAudioClip(clipId: String?) {
