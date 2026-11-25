@@ -55,7 +55,13 @@ class OverlayClipManager {
         clip.startTimeMs = clip.startTimeMs.coerceAtLeast(0L)
         clip.durationMs = clip.durationMs.coerceAtLeast(1L)
         clip.sourceStartMs = clip.sourceStartMs.coerceAtLeast(0L)
-        clip.sourceDurationMs = clip.sourceDurationMs.coerceAtLeast(1L)
+        // Overlay video belum memiliki kontrol speed. Karena itu durasi sumber
+        // harus sama persis dengan durasi timeline agar sequence export tidak drift.
+        clip.sourceDurationMs = if (clip.mediaType == OverlayClip.Type.VIDEO) {
+            clip.durationMs
+        } else {
+            clip.sourceDurationMs.coerceAtLeast(1L)
+        }
         clip.trackIndex = firstAvailableLane(clip.startTimeMs, clip.durationMs)
         clip.opacity = clip.opacity.coerceIn(0f, 1f)
         clip.scale = clip.scale.coerceIn(0.05f, 10f)
@@ -126,8 +132,10 @@ class OverlayClipManager {
         if (positionMs <= clip.startTimeMs || positionMs >= clip.endTimeMs) return null
         val firstDuration = positionMs - clip.startTimeMs
         val secondDuration = clip.endTimeMs - positionMs
+        // Tidak ada speed overlay: pembagian source range harus identik dengan
+        // pembagian timeline. Pembulatan rasio dapat menimbulkan drift antar-klip.
         val sourceSplit = if (clip.mediaType == OverlayClip.Type.VIDEO) {
-            (clip.sourceDurationMs * (firstDuration.toDouble() / clip.durationMs)).toLong()
+            firstDuration
         } else clip.sourceDurationMs
         val second = clip.copy(
             id = UUID.randomUUID().toString(),
@@ -170,11 +178,10 @@ class OverlayClipManager {
         val newEnd = newStartTimeMs + newDurationMs
 
         if (clip.mediaType == OverlayClip.Type.VIDEO) {
-            val sourcePerTimelineMs = oldSourceDuration.toDouble() / oldDuration.coerceAtLeast(1L)
-            val sourceTrimStart = ((newStartTimeMs - oldStart) * sourcePerTimelineMs).toLong()
-            val sourceTrimEnd = ((oldEnd - newEnd) * sourcePerTimelineMs).toLong()
-            clip.sourceStartMs = oldSourceStart + sourceTrimStart
-            clip.sourceDurationMs = (oldSourceDuration - sourceTrimStart - sourceTrimEnd).coerceAtLeast(1L)
+            // 1x playback: memotong 300 ms di timeline berarti memotong 300 ms
+            // dari sumber. Ini menjaga durasi sequence export tetap sejajar.
+            clip.sourceStartMs = oldSourceStart + (newStartTimeMs - oldStart)
+            clip.sourceDurationMs = newDurationMs
         }
         clip.startTimeMs = newStartTimeMs
         clip.durationMs = newDurationMs
