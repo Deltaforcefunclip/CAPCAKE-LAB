@@ -157,7 +157,7 @@ class OverlayClipManager {
         val clip = find(id) ?: return false
         if (newStartTimeMs < clip.startTimeMs || newDurationMs < 1L) return false
         val newEnd = newStartTimeMs + newDurationMs
-        if (newEnd > oldEnd) return false
+        if (newEnd > clip.endTimeMs) return false
         return clips.none { other ->
             other.id != clip.id &&
                 other.trackIndex == clip.trackIndex &&
@@ -171,10 +171,6 @@ class OverlayClipManager {
         if (!canTrim(id, newStartTimeMs, newDurationMs)) return false
         val oldStart = clip.startTimeMs
         val oldSourceStart = clip.sourceStartMs
-        val oldSourceDuration = clip.sourceDurationMs
-        val oldEnd = clip.endTimeMs
-        val newEnd = newStartTimeMs + newDurationMs
-
         if (clip.mediaType == OverlayClip.Type.VIDEO) {
             // 1x playback: memotong 300 ms di timeline berarti memotong 300 ms
             // dari sumber. Ini menjaga durasi sequence export tetap sejajar.
