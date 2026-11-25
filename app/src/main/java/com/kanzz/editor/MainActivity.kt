@@ -663,6 +663,7 @@ class MainActivity : AppCompatActivity() {
         // Player overlay memakai decoder terpisah dari video utama. Lepaskan saat
         // kembali ke beranda agar tidak terus memutar atau menahan resource.
         clearOverlayVideoPreviewPlayers()
+        clearOverlayImagePreview()
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -6476,6 +6477,14 @@ class MainActivity : AppCompatActivity() {
                 position >= it.startTimeMs && position < it.endTimeMs
         }.sortedBy { it.trackIndex }
         val activeIds = active.map { it.id }.toSet()
+        // Klip yang dihapus tidak boleh meninggalkan bitmap di cache sampai aplikasi ditutup.
+        val deletedIds = overlayImagePreviewBitmaps.keys.filter { id ->
+            overlayClipManager.find(id) == null
+        }
+        deletedIds.forEach { id ->
+            overlayImagePreviewBitmaps.remove(id)?.let { if (!it.isRecycled) it.recycle() }
+            overlayImagePreviewGenerations.remove(id)
+        }
 
         val staleIds = overlayImagePreviewViews.keys.filter { it !in activeIds }
         staleIds.forEach { id ->
