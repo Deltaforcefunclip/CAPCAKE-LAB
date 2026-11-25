@@ -197,6 +197,8 @@ class OverlayTrackView(
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
+                // Lepaskan intercept parent juga saat sistem membatalkan gesture.
+                // Tanpa ini, scroll/pan timeline dapat tetap terkunci setelah cancel.
                 parent?.requestDisallowInterceptTouchEvent(false)
                 touched = null
                 mode = 0
