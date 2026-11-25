@@ -4195,6 +4195,43 @@ class MainActivity : AppCompatActivity() {
         pushUndoSnapshot()
 
         val preview = previewFrameContainer
+        // Bingkai crop mengikuti area media yang benar-benar tampil, bukan seluruh
+        // kanvas preview. Video PlayerView bisa lebih besar dari konten karena FIT.
+        val targetView: View = when (clip.mediaType) {
+            OverlayClip.Type.VIDEO -> overlayVideoPreviewViews[clip.id]
+            OverlayClip.Type.IMAGE -> overlayImagePreviewViews[clip.id]
+        } ?: preview
+
+        fun cropBounds(): RectF {
+            val parentLocation = IntArray(2)
+            val viewLocation = IntArray(2)
+            preview.getLocationOnScreen(parentLocation)
+            targetView.getLocationOnScreen(viewLocation)
+            val sx = abs(targetView.scaleX).coerceAtLeast(0.001f)
+            val sy = abs(targetView.scaleY).coerceAtLeast(0.001f)
+            var contentWidth = targetView.width.toFloat()
+            var contentHeight = targetView.height.toFloat()
+            if (clip.mediaType == OverlayClip.Type.VIDEO) {
+                val size = overlayVideoPreviewPlayers[clip.id]?.videoSize
+                if (size != null && size.width > 0 && size.height > 0 &&
+                    targetView.width > 0 && targetView.height > 0
+                ) {
+                    val videoAspect = size.width.toFloat() / size.height.toFloat()
+                    val viewAspect = targetView.width.toFloat() / targetView.height.toFloat()
+                    if (videoAspect > viewAspect) {
+                        contentHeight = targetView.width / videoAspect
+                    } else {
+                        contentWidth = targetView.height * videoAspect
+                    }
+                }
+            }
+            val offsetX = (targetView.width - contentWidth) * 0.5f * sx
+            val offsetY = (targetView.height - contentHeight) * 0.5f * sy
+            val left = viewLocation[0] - parentLocation[0] + offsetX
+            val top = viewLocation[1] - parentLocation[1] + offsetY
+            return RectF(left, top, left + contentWidth * sx, top + contentHeight * sy)
+        }
+
         val guide = object : View(this) {
             private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.WHITE
@@ -4208,22 +4245,30 @@ class MainActivity : AppCompatActivity() {
             private var activeEdge = -1
             private var lastX = 0f
             private var lastY = 0f
-            private val edgeNames = arrayOf("KIRI", "ATAS", "KANAN", "BAWAH")
+
+            private fun cropRect(): RectF {
+                val bounds = cropBounds()
+                return RectF(
+                    bounds.left + bounds.width() * clip.cropLeft / 2f,
+                    bounds.top + bounds.height() * clip.cropTop / 2f,
+                    bounds.right - bounds.width() * clip.cropRight / 2f,
+                    bounds.bottom - bounds.height() * clip.cropBottom / 2f
+                )
+            }
 
             override fun onDraw(canvas: Canvas) {
                 super.onDraw(canvas)
-                val left = width * clip.cropLeft / 2f
-                val top = height * clip.cropTop / 2f
-                val right = width * (1f - clip.cropRight / 2f)
-                val bottom = height * (1f - clip.cropBottom / 2f)
-                linePaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(dp(8).toFloat(), dp(5).toFloat()), 0f)
-                canvas.drawRect(left, top, right, bottom, linePaint)
+                val rect = cropRect()
+                linePaint.pathEffect = android.graphics.DashPathEffect(
+                    floatArrayOf(dp(8).toFloat(), dp(5).toFloat()), 0f
+                )
+                canvas.drawRect(rect, linePaint)
                 linePaint.pathEffect = null
                 val radius = dp(7).toFloat()
                 listOf(
-                    left to top, (left + right) / 2f to top, right to top,
-                    left to (top + bottom) / 2f, right to (top + bottom) / 2f,
-                    left to bottom, (left + right) / 2f to bottom, right to bottom
+                    rect.left to rect.top, rect.centerX() to rect.top, rect.right to rect.top,
+                    rect.left to rect.centerY(), rect.right to rect.centerY(),
+                    rect.left to rect.bottom, rect.centerX() to rect.bottom, rect.right to rect.bottom
                 ).forEach { (x, y) -> canvas.drawCircle(x, y, radius, handlePaint) }
                 val hint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     color = Color.WHITE
@@ -4234,15 +4279,14 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onTouchEvent(event: MotionEvent): Boolean {
-                val left = width * clip.cropLeft / 2f
-                val top = height * clip.cropTop / 2f
-                val right = width * (1f - clip.cropRight / 2f)
-                val bottom = height * (1f - clip.cropBottom / 2f)
+                val bounds = cropBounds()
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
                         val distances = floatArrayOf(
-                            abs(event.x - left), abs(event.y - top),
-                            abs(event.x - right), abs(event.y - bottom)
+                            abs(event.x - (bounds.left + bounds.width() * clip.cropLeft / 2f)),
+                            abs(event.y - (bounds.top + bounds.height() * clip.cropTop / 2f)),
+                            abs(event.x - (bounds.right - bounds.width() * clip.cropRight / 2f)),
+                            abs(event.y - (bounds.bottom - bounds.height() * clip.cropBottom / 2f))
                         )
                         val nearest = distances.indices.minByOrNull { distances[it] } ?: 0
                         if (distances[nearest] > dp(42)) return false
@@ -4253,8 +4297,8 @@ class MainActivity : AppCompatActivity() {
                         return true
                     }
                     MotionEvent.ACTION_MOVE -> {
-                        val dx = (event.x - lastX) * 2f / width.coerceAtLeast(1)
-                        val dy = (event.y - lastY) * 2f / height.coerceAtLeast(1)
+                        val dx = (event.x - lastX) * 2f / bounds.width().coerceAtLeast(1f)
+                        val dy = (event.y - lastY) * 2f / bounds.height().coerceAtLeast(1f)
                         when (activeEdge) {
                             0 -> clip.cropLeft = (clip.cropLeft + dx).coerceIn(0f, 0.95f - clip.cropRight)
                             1 -> clip.cropTop = (clip.cropTop + dy).coerceIn(0f, 0.95f - clip.cropBottom)
@@ -4330,7 +4374,7 @@ class MainActivity : AppCompatActivity() {
         )
         guide.bringToFront()
         controls.bringToFront()
-        Toast.makeText(this, "Geser garis putih di preview untuk mengatur crop.", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "Garis crop sekarang mengikuti ukuran media overlay.", Toast.LENGTH_LONG).show()
     }
 
     private fun showOverlayTransformDialog(clip: OverlayClip) {
@@ -8985,7 +9029,11 @@ class MainActivity : AppCompatActivity() {
             val positionY: Float,
             val scale: Float,
             val rotation: Float,
-            val opacity: Float
+            val opacity: Float,
+            val cropLeft: Float,
+            val cropTop: Float,
+            val cropRight: Float,
+            val cropBottom: Float
         )
         // Decode sekali sebelum Transformer berjalan. Callback CanvasOverlay hanya
         // membaca snapshot immutable dan tidak mengakses ContentResolver/View.
@@ -9008,7 +9056,11 @@ class MainActivity : AppCompatActivity() {
                     positionY = overlay.positionY,
                     scale = overlay.scale.coerceIn(0.05f, 10f),
                     rotation = overlay.rotation,
-                    opacity = overlay.opacity.coerceIn(0f, 1f)
+                    opacity = overlay.opacity.coerceIn(0f, 1f),
+                    cropLeft = overlay.cropLeft.coerceIn(0f, 0.95f),
+                    cropTop = overlay.cropTop.coerceIn(0f, 0.95f),
+                    cropRight = overlay.cropRight.coerceIn(0f, 0.95f),
+                    cropBottom = overlay.cropBottom.coerceIn(0f, 0.95f)
                 )
             }
         // Jangan diam-diam mengekspor project tanpa satu atau beberapa image overlay.
@@ -9331,7 +9383,7 @@ class MainActivity : AppCompatActivity() {
                                                     if (globalMs < image.startTimeMs || globalMs >= image.endTimeMs) {
                                                         return@forEach
                                                     }
-                                                    val baseWidth = previewContentW * 0.5f * image.scale
+                                                    val baseWidth = previewW * 0.5f * image.scale
                                                     val baseHeight = baseWidth *
                                                         image.bitmap.height.toFloat() /
                                                         image.bitmap.width.toFloat().coerceAtLeast(1f)
@@ -9348,6 +9400,16 @@ class MainActivity : AppCompatActivity() {
                                                     )
                                                     canvas.save()
                                                     canvas.rotate(image.rotation, centerX, centerY)
+                                                    val cropLeft = image.cropLeft.coerceIn(0f, 0.95f)
+                                                    val cropTop = image.cropTop.coerceIn(0f, 0.95f)
+                                                    val cropRight = image.cropRight.coerceIn(0f, 0.95f - cropLeft)
+                                                    val cropBottom = image.cropBottom.coerceIn(0f, 0.95f - cropTop)
+                                                    canvas.clipRect(
+                                                        destination.left + destination.width() * cropLeft / 2f,
+                                                        destination.top + destination.height() * cropTop / 2f,
+                                                        destination.right - destination.width() * cropRight / 2f,
+                                                        destination.bottom - destination.height() * cropBottom / 2f
+                                                    )
                                                     canvas.drawBitmap(image.bitmap, null, destination, imagePaint)
                                                     canvas.restore()
                                                 }
@@ -9488,7 +9550,9 @@ class MainActivity : AppCompatActivity() {
                 exportDialog = null
                 exportProgressBar = null
                 exportProgressText = null
-                showMessage("Ekspor gagal: ${exportException.message ?: "Kesalahan tidak diketahui"}")
+                Log.e("CAPCAKE_EXPORT", "Transformer export failed", exportException)
+                val detail = exportException.cause?.message ?: exportException.message ?: "Kesalahan tidak diketahui"
+                showMessage("Ekspor gagal: $detail")
             }
         }
 
@@ -9689,10 +9753,9 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            val frameWidth = playerView.width.coerceAtLeast(1).toFloat()
-            val frameHeight = playerView.height.coerceAtLeast(1).toFloat()
             // Setelah pengurutan ulang, input utama berada tepat setelah seluruh
-            // sequence overlay. Ukuran output harus tetap mengikuti video utama.
+            // sequence overlay. Koordinat posisi dihitung terhadap ukuran input utama,
+            // bukan ukuran view Android, agar resolusi ekspor tidak menggeser overlay.
             val mainVideoInputId = overlaySequenceClips.size
             val compositorSettings = object : VideoCompositorSettings {
                 override fun getOutputSize(inputSizes: MutableList<Size>): Size =
@@ -9713,8 +9776,11 @@ class MainActivity : AppCompatActivity() {
                         // dengan pengaturan default jika metadata lane tidak tersedia.
                         return StaticOverlaySettings.Builder().build()
                     }
-                    val normalizedX = (overlayClip.positionX * 2f / frameWidth).coerceIn(-2f, 2f)
-                    val normalizedY = (-overlayClip.positionY * 2f / frameHeight).coerceIn(-2f, 2f)
+                    val mainSize = inputSizes.getOrNull(mainVideoInputId) ?: Size(1280, 720)
+                    val normalizedX = (overlayClip.positionX * 2f /
+                        mainSize.width.toFloat().coerceAtLeast(1f)).coerceIn(-2f, 2f)
+                    val normalizedY = (-overlayClip.positionY * 2f /
+                        mainSize.height.toFloat().coerceAtLeast(1f)).coerceIn(-2f, 2f)
                     val overlayScale = (0.5f * overlayClip.scale).coerceIn(0.025f, 5f)
                     return StaticOverlaySettings.Builder()
                         .setAlphaScale(overlayClip.opacity.coerceIn(0f, 1f))
