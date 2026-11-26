@@ -31,7 +31,7 @@ dependencies {
     implementation("androidx.media3:media3-transformer:1.9.0")
     implementation("androidx.media3:media3-effect:1.9.0")
     // Existing dependency used by the current AI Motion Blur implementation.
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.23.2")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.32.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
