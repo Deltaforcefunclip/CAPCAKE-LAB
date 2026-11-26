@@ -9584,7 +9584,12 @@ class MainActivity : AppCompatActivity() {
                 exportProgressBar = null
                 exportProgressText = null
                 Log.e("CAPCAKE_EXPORT", "Transformer export failed", exportException)
-                val detail = exportException.cause?.message ?: exportException.message ?: "Kesalahan tidak diketahui"
+                val causeDetails = generateSequence<Throwable>(exportException) { it.cause }
+                    .mapNotNull { it.message?.takeIf(String::isNotBlank) }
+                    .distinct()
+                    .joinToString(" <- ")
+                val detail = causeDetails.ifBlank { exportException.message ?: "Kesalahan tidak diketahui" }
+                Log.e("CAPCAKE_EXPORT", "Export failure chain: $detail")
                 showMessage("Ekspor gagal: $detail")
             }
         }
@@ -9819,7 +9824,12 @@ class MainActivity : AppCompatActivity() {
                     // Cadence anchor hanya memasok timestamp 60 FPS dan sengaja
                     // transparan agar tidak menutupi layer visual di bawahnya.
                     if (inputId == 0) {
-                        return StaticOverlaySettings.Builder().setAlphaScale(0f).build()
+                        // Jangan gunakan alpha 0 mutlak: beberapa jalur compositor/encoder
+                        // dapat menganggap input primer sepenuhnya kosong dan tidak
+                        // mengeluarkan sample, lalu memicu timeout 10 detik.
+                        // Nilai nyaris nol menjaga cadence anchor tetap aktif tanpa
+                        // perubahan visual yang terlihat pada video hasil.
+                        return StaticOverlaySettings.Builder().setAlphaScale(0.001f).build()
                     }
                     val sequenceClips = overlaySequenceClips[inputId]
                     val timelinePositionMs = presentationTimeUs / 1000L
