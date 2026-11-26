@@ -14,7 +14,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
-import android.util.Rational
 import androidx.media3.common.util.Size
 import android.provider.MediaStore
 import android.provider.OpenableColumns
@@ -49,7 +48,6 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.ui.PlayerView
 import androidx.media3.transformer.Composition
-import androidx.media3.transformer.VideoFrameAggregationParameters
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
@@ -9597,6 +9595,15 @@ class MainActivity : AppCompatActivity() {
             // agar video utama menjadi latar dan tidak menutupi seluruh overlay.
             val sequences = mutableListOf<EditedMediaItemSequence>()
 
+            // Primary stream harus mengikuti FPS timeline utama. DefaultVideoCompositor
+            // memakai input pertama untuk timestamp output, tetapi input pertama juga
+            // berada di lapisan paling depan. Buat salinan video-only dari timeline
+            // utama sebagai cadence anchor transparan; video utama asli tetap di
+            // belakang overlay agar urutan visual tidak berubah.
+            val cadenceAnchor = EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_VIDEO))
+            editedItems.forEach { cadenceAnchor.addItem(it) }
+            sequences.add(cadenceAnchor.build())
+
             // Setiap lane video overlay menjadi sequence video terpisah. Gap di awal
             // dan antar-klip menjaga posisi absolut klip pada timeline project.
             val overlaySequenceClips = mutableMapOf<Int, List<OverlayClip>>()
@@ -9678,13 +9685,14 @@ class MainActivity : AppCompatActivity() {
                     if (cursorMs < videoClipManager.durationMs) {
                         sequenceBuilder.addGap((videoClipManager.durationMs - cursorMs) * 1000L)
                     }
+                    // +1 karena input 0 adalah cadence anchor transparan.
                     val inputId = sequences.size
                     sequences.add(sequenceBuilder.build())
                     overlaySequenceClips[inputId] = ordered
                 }
 
-            // Sequence utama ditambahkan setelah seluruh lane overlay supaya berada
-            // di belakang overlay pada urutan input compositor Media3.
+            // Sequence utama visual/audio asli berada paling belakang. Input pertama
+            // tetap cadence anchor 60 FPS, sedangkan overlay berada di atas main track.
             sequences.add(EditedMediaItemSequence.withAudioAndVideoFrom(editedItems))
 
             // Audio asli video overlay diekspor sebagai sequence audio terpisah.
@@ -9793,10 +9801,9 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            // Setelah pengurutan ulang, input utama berada tepat setelah seluruh
-            // sequence overlay. Koordinat posisi dihitung terhadap ukuran input utama,
-            // bukan ukuran view Android, agar resolusi ekspor tidak menggeser overlay.
-            val mainVideoInputId = overlaySequenceClips.size
+            // Input 0 = cadence anchor, input 1..N = video overlay, input N+1 = main.
+            // Koordinat posisi dihitung terhadap ukuran input main yang sesungguhnya.
+            val mainVideoInputId = overlaySequenceClips.size + 1
             var mainVideoInputSize = Size(1280, 720)
             var compositorInputSizes: List<Size> = emptyList()
             val compositorSettings = object : VideoCompositorSettings {
@@ -9809,6 +9816,11 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 override fun getOverlaySettings(inputId: Int, presentationTimeUs: Long): OverlaySettings {
+                    // Cadence anchor hanya memasok timestamp 60 FPS dan sengaja
+                    // transparan agar tidak menutupi layer visual di bawahnya.
+                    if (inputId == 0) {
+                        return StaticOverlaySettings.Builder().setAlphaScale(0f).build()
+                    }
                     val sequenceClips = overlaySequenceClips[inputId]
                     val timelinePositionMs = presentationTimeUs / 1000L
                     // Pada beberapa jalur decoder, timestamp frame input dapat
@@ -9859,20 +9871,9 @@ class MainActivity : AppCompatActivity() {
                         .build()
                 }
             }
-            val compositionBuilder = Composition.Builder(sequences)
+            val composition = Composition.Builder(sequences)
                 .setVideoCompositorSettings(compositorSettings)
-            // Multi-sequence composition sebelumnya mengikuti cadence sequence
-            // overlay paling depan (mis. 30 FPS), walaupun timeline utama 60 FPS.
-            // Aggregator Media3 1.11+ menyelaraskan semua input ke FPS target dan
-            // mengulang frame 30 FPS seperlunya tanpa menurunkan output ke 30 FPS.
-            if (exportFrameRate != null && exportFrameRate > 0f) {
-                compositionBuilder.setVideoFrameAggregationParameters(
-                    VideoFrameAggregationParameters.Builder()
-                        .setFrameRate(Rational(exportFrameRate.toInt().coerceAtLeast(1), 1))
-                        .build()
-                )
-            }
-            val composition = compositionBuilder.build()
+                .build()
             // Encode portrait frames in portrait dimensions instead of relying
             // only on a 90-degree rotation flag in MP4 metadata.
             val transformer = Transformer.Builder(this)
