@@ -9600,13 +9600,41 @@ class MainActivity : AppCompatActivity() {
             // agar video utama menjadi latar dan tidak menutupi seluruh overlay.
             val sequences = mutableListOf<EditedMediaItemSequence>()
 
-            // Primary stream harus mengikuti FPS timeline utama. DefaultVideoCompositor
-            // memakai input pertama untuk timestamp output, tetapi input pertama juga
-            // berada di lapisan paling depan. Buat salinan video-only dari timeline
-            // utama sebagai cadence anchor transparan; video utama asli tetap di
-            // belakang overlay agar urutan visual tidak berubah.
+            // Primary stream harus mengikuti FPS timeline utama. Jangan memakai ulang
+            // EditedMediaItem dari sequence visual utama: objek Effects/processor di
+            // dalamnya dapat dipakai bersamaan oleh dua decoder/GL pipeline dan membuat
+            // compositor tidak pernah menerima sample. Buat item anchor independen,
+            // tanpa efek visual/audio, tetapi pertahankan sumber, trim, speed, dan FPS.
             val cadenceAnchor = EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_VIDEO))
-            editedItems.forEach { cadenceAnchor.addItem(it) }
+            videoClipManager.clips.forEach { clip ->
+                val cachedMotionBlur = motionBlurCacheFile(clip)
+                    .takeIf { clip.motionBlurIntensity > 0.001f && it.exists() && it.length() >= 1024L }
+                val anchorUri = cachedMotionBlur?.let { Uri.fromFile(it) } ?: Uri.parse(clip.sourceUri)
+                val anchorStartMs = if (cachedMotionBlur != null) 0L else clip.sourceStartMs
+                val anchorEndMs = if (cachedMotionBlur != null) clip.durationMs else clip.sourceStartMs + clip.durationMs
+                val anchorMediaItem = MediaItem.Builder()
+                    .setUri(anchorUri)
+                    .setClippingConfiguration(
+                        MediaItem.ClippingConfiguration.Builder()
+                            .setStartPositionMs(anchorStartMs.coerceAtLeast(0L))
+                            .setEndPositionMs(anchorEndMs.coerceAtLeast(anchorStartMs + 1L))
+                            .build()
+                    )
+                    .build()
+                val anchorBuilder = EditedMediaItem.Builder(anchorMediaItem)
+                    .setRemoveAudio(true)
+                    .setSpeed(object : SpeedProvider {
+                        override fun getSpeed(timeUs: Long): Float =
+                            clip.speed.coerceIn(0.25f, 4f)
+
+                        override fun getNextSpeedChangeTimeUs(timeUs: Long): Long =
+                            C.TIME_UNSET
+                    })
+                if (exportFrameRate != null) {
+                    anchorBuilder.setFrameRate(exportFrameRate.toInt().coerceAtLeast(1))
+                }
+                cadenceAnchor.addItem(anchorBuilder.build())
+            }
             sequences.add(cadenceAnchor.build())
 
             // Setiap lane video overlay menjadi sequence video terpisah. Gap di awal
