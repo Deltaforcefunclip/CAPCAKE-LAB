@@ -14,6 +14,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import android.util.Rational
 import androidx.media3.common.util.Size
 import android.provider.MediaStore
 import android.provider.OpenableColumns
@@ -48,6 +49,7 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.ui.PlayerView
 import androidx.media3.transformer.Composition
+import androidx.media3.transformer.VideoFrameAggregationParameters
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
@@ -9841,45 +9843,36 @@ class MainActivity : AppCompatActivity() {
                         previewContentW.coerceAtLeast(1f)).coerceIn(-2f, 2f)
                     val normalizedY = (-overlayClip.positionY * 2f /
                         previewContentH.coerceAtLeast(1f)).coerceIn(-2f, 2f)
-                    // PlayerView preview diskalakan 50% dari viewport, tetapi
-                    // ukuran sumber overlay bisa berbeda dari ukuran video utama.
-                    // Hitung skala per sumbu dari ukuran media yang benar-benar masuk
-                    // compositor agar ukuran visual preview dan hasil ekspor sebanding.
-                    val overlayInputSize = compositorInputSizes.getOrNull(inputId)
-                        ?: mainVideoInputSize
-                    val overlayAspect = overlayInputSize.width.toFloat() /
-                        overlayInputSize.height.toFloat().coerceAtLeast(1f)
-                    val previewViewportAspect = previewW / previewH
-                    val fittedOverlayW: Float
-                    val fittedOverlayH: Float
-                    if (overlayAspect >= previewViewportAspect) {
-                        fittedOverlayW = previewW
-                        fittedOverlayH = previewW / overlayAspect
-                    } else {
-                        fittedOverlayH = previewH
-                        fittedOverlayW = previewH * overlayAspect
-                    }
-                    val scaleFactor = (0.5f * overlayClip.scale).coerceIn(0.025f, 5f)
-                    val scaleX = (
-                        fittedOverlayW * scaleFactor / previewContentW *
-                            mainVideoInputSize.width / overlayInputSize.width.toFloat().coerceAtLeast(1f)
-                        ).coerceIn(0.001f, 10f)
-                    val scaleY = (
-                        fittedOverlayH * scaleFactor / previewContentH *
-                            mainVideoInputSize.height / overlayInputSize.height.toFloat().coerceAtLeast(1f)
-                        ).coerceIn(0.001f, 10f)
+                    // Preview memakai PlayerView yang memenuhi viewport dengan FIT,
+                    // lalu View.scaleX/scaleY = 0.5 * clip.scale. Media3 melakukan
+                    // pemetaan aspect ratio input overlay ke frame compositor sendiri;
+                    // karena itu skala harus uniform. Mengalikan rasio ukuran sumber
+                    // dan output di sini menghitung koreksi dua kali dan membuat ukuran
+                    // export berbeda ketika resolusi/aspect ratio overlay tidak sama.
+                    val overlayScale = (0.5f * overlayClip.scale).coerceIn(0.025f, 5f)
                     return StaticOverlaySettings.Builder()
                         .setAlphaScale(overlayClip.opacity.coerceIn(0f, 1f))
-                        .setScale(scaleX, scaleY)
+                        .setScale(overlayScale, overlayScale)
                         .setOverlayFrameAnchor(0f, 0f)
                         .setBackgroundFrameAnchor(normalizedX, normalizedY)
                         .setRotationDegrees(overlayClip.rotation)
                         .build()
                 }
             }
-            val composition = Composition.Builder(sequences)
+            val compositionBuilder = Composition.Builder(sequences)
                 .setVideoCompositorSettings(compositorSettings)
-                .build()
+            // Multi-sequence composition sebelumnya mengikuti cadence sequence
+            // overlay paling depan (mis. 30 FPS), walaupun timeline utama 60 FPS.
+            // Aggregator Media3 1.11+ menyelaraskan semua input ke FPS target dan
+            // mengulang frame 30 FPS seperlunya tanpa menurunkan output ke 30 FPS.
+            if (exportFrameRate != null && exportFrameRate > 0f) {
+                compositionBuilder.setVideoFrameAggregationParameters(
+                    VideoFrameAggregationParameters.Builder()
+                        .setFrameRate(Rational(exportFrameRate.toInt().coerceAtLeast(1), 1))
+                        .build()
+                )
+            }
+            val composition = compositionBuilder.build()
             // Encode portrait frames in portrait dimensions instead of relying
             // only on a 90-degree rotation flag in MP4 metadata.
             val transformer = Transformer.Builder(this)
