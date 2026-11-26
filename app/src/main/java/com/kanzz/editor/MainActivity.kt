@@ -9861,17 +9861,18 @@ class MainActivity : AppCompatActivity() {
                     }
                     val sequenceClips = overlaySequenceClips[inputId]
                     val timelinePositionMs = presentationTimeUs / 1000L
-                    // Pada beberapa jalur decoder, timestamp frame input dapat
-                    // sedikit berbeda dari timestamp timeline hasil clipping.
-                    // Jangan membuat seluruh video overlay transparan hanya karena
-                    // pencarian rentang waktu tidak menemukan kecocokan persis.
+                    // Jangan memilih klip terdekat untuk seluruh rentang gap. Pada Media3,
+                    // gap di sequence video dapat menghasilkan frame placeholder hitam.
+                    // Jika placeholder menerima alpha default, ia menutupi video utama
+                    // dan membuat lane overlay tampak seperti gagal dikomposisikan.
+                    // Toleransi kecil hanya untuk perbedaan timestamp decoder di tepi klip.
                     val overlayClip = sequenceClips
-                        ?.firstOrNull { timelinePositionMs in it.startTimeMs until it.endTimeMs }
-                        ?: sequenceClips?.minByOrNull { abs(it.startTimeMs - timelinePositionMs) }
+                        ?.firstOrNull { timelinePositionMs >= it.startTimeMs - 100L &&
+                            timelinePositionMs < it.endTimeMs + 100L }
                     if (overlayClip == null) {
-                        // Input 0 adalah video utama. Input video lain tetap terlihat
-                        // dengan pengaturan default jika metadata lane tidak tersedia.
-                        return StaticOverlaySettings.Builder().build()
+                        return StaticOverlaySettings.Builder()
+                            .setAlphaScale(0f)
+                            .build()
                     }
                     // Konversi posisi memakai area konten preview yang sama dengan
                     // CanvasOverlay image/text export, bukan resolusi file output.
