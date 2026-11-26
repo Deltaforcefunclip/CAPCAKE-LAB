@@ -9859,12 +9859,17 @@ class MainActivity : AppCompatActivity() {
                         // perubahan visual yang terlihat pada video hasil.
                         return StaticOverlaySettings.Builder().setAlphaScale(0.001f).build()
                     }
+                    // Input main video harus tetap memakai pengaturan default.
+                    // Callback ini juga dipanggil untuk mainVideoInputId; jika dianggap
+                    // sebagai gap overlay lalu diberi alpha 0, seluruh ekspor tanpa overlay
+                    // dapat kehilangan frame utama dan berakhir timeout.
+                    if (inputId == mainVideoInputId) {
+                        return StaticOverlaySettings.Builder().build()
+                    }
                     val sequenceClips = overlaySequenceClips[inputId]
                     val timelinePositionMs = presentationTimeUs / 1000L
                     // Jangan memilih klip terdekat untuk seluruh rentang gap. Pada Media3,
                     // gap di sequence video dapat menghasilkan frame placeholder hitam.
-                    // Jika placeholder menerima alpha default, ia menutupi video utama
-                    // dan membuat lane overlay tampak seperti gagal dikomposisikan.
                     // Toleransi kecil hanya untuk perbedaan timestamp decoder di tepi klip.
                     val overlayClip = sequenceClips
                         ?.firstOrNull { timelinePositionMs >= it.startTimeMs - 100L &&
